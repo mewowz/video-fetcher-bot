@@ -109,9 +109,14 @@ class DownloadVideoCog(commands.Cog):
         }
 
         # Store job record + enqueue job id
+
+        # Store the payload
         job_key = f"dl:job:{job_id}"
         await self.redis.set(job_key, json.dumps(payload), ex=60 * 60)  # 1h TTL for now
-        await self.redis.rpush("dl:queue", job_id)
+
+        # Store the UUID for the job
+        await self.redis.rpush("dl:in_queue", job_id)
+
         # Later, if I care to make this more robust, move this from rpush to
         # use streams + consumer groups (xadd/xgroup/...)
 
