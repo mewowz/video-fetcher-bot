@@ -36,7 +36,7 @@ class DownloadRequest:
 
 @dataclass
 class JobPolicy:
-    max_size_bytes: int = 10 * 1024 * 1024  # 10MB discord default
+    max_size_bytes: int = 10 * 1000 * 1000  # 10MB discord default
     prefer_discord_upload: bool = True
 
 class DownloadVideoCog(commands.Cog):
@@ -72,6 +72,12 @@ class DownloadVideoCog(commands.Cog):
 
         # In DMs, ctx.guild is None
         guild_id = ctx.guild.id if ctx.guild else None
+        
+        # FOR NOW: Ensure that people can only use the bot in DMs
+        if guild_id is not None:
+            # Just log to the console and quit
+            print("Not in DMs. Doing nothing!")
+            return
 
         # Immediately post a status message so we have a message_id to update later.
         status_msg = await ctx.reply("Queued (starting soon...)")
@@ -110,12 +116,15 @@ class DownloadVideoCog(commands.Cog):
 
         # Store job record + enqueue job id
 
+        ## I overcomplicated this too early. I'm just going to use lpush/brpop for now
+        await self.redis.lpush("dlqueue", json.dumps(payload))
+
         # Store the payload
-        job_key = f"dl:job:{job_id}"
-        await self.redis.set(job_key, json.dumps(payload), ex=60 * 60)  # 1h TTL for now
+        #job_key = f"dl:job:{job_id}"
+        #await self.redis.set(job_key, json.dumps(payload), ex=60 * 60)  # 1h TTL for now
 
         # Store the UUID for the job
-        await self.redis.rpush("dl:in_queue", job_id)
+        #await self.redis.rpush("dl:in_queue", job_id)
 
         # Later, if I care to make this more robust, move this from rpush to
         # use streams + consumer groups (xadd/xgroup/...)

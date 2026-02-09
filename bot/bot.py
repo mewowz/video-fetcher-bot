@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 from bot.cogs import download_video as cog_download_video
+import redis.asyncio as redis
 
 intents = discord.Intents.default()
 intents.guilds = True
@@ -9,6 +10,8 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="&", intents=intents)
 
 async def init_bot():
+    redis_aclient = redis.Redis()
+    bot.redis = redis_aclient
     await init_cogs()
 
 async def init_cogs():
