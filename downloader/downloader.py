@@ -2,8 +2,15 @@ import asyncio
 import json
 from yt_dlp import YoutubeDL
 from pathlib import Path
+from dataclasses import dataclass
 
-from .config import DOWNLOADS_DIR, TMP_DOWNLOADS_DIR, init_dirs
+from .config import DOWNLOADS_DIR, TMP_DOWNLOADS_DIR, MAX_DOWNLOAD_SIZE_BYTES, init_dirs
+
+
+@dataclass
+class DownloadResponse:
+    info_dict: dict
+    paths: dict[str, tuple[Path, str]] # {"format_id": [ Path("/path/to/file.ext"), "ao" or "vo"] }
 
 
 class YTDownloader:
@@ -71,36 +78,94 @@ class YTDownloader:
 
         return (vtarget_format_id, atarget_format_id)
 
+    def _get_formats_below_size(self, info_dict: dict, max_size_bytes: int):
+        fmts = info_dict["formats"]
+        ao = [fmt for fmt in fmts if fmt["vcodec"] == "none" and fmt["acodec"] != "none"]
+        vo = [fmt for fmt in fmts if fmt["vcodec"] != "none" and fmt["acodec"] == "none"]
+
+        valid_fmts = dict()
+
+        for vfmt in vo:
+            vsize = vfmt.get("filesize")
+            if vsize is None:
+                continue
+            for afmt in ao:
+                asize = afmt.get("filesize")
+                if asize is None:
+                    continue
+                size = vsize + asize
+                if size < max_size_bytes:
+                    valid_fmts[(vfmt["format_id"], afmt["format_id"])] = size
+
+        # Sort by largest download (usually better quality)
+        if len(valid_fmts) == 0:
+            return (None, None)
+
+        valid_fmts = sorted(valid_fmts.items(), key=lambda itm: itm[1])
+        return valid_fmts[-1][0]
+
+    def _get_file_paths(self, info_dict: dict, format_ids: list):
+        fmts = [
+            fmt for fmt in info_dict["formats"]
+                if fmt["format_id"] in format_ids
+        ]
+
+        paths = {}
+        for fmt in fmts:
+            paths[fmt["format_id"]] = [
+                    Path(DOWNLOADS_DIR) / Path(info_dict["id"]) / Path(fmt["format_id"] + fmt["ext"]),
+                    "ao" if fmt["abr"] > 0.0 else "vo"
+            ]
+        return paths
+
 
     async def _handle_job(self, job: dict):
+        can_direct_upload = False
+        can_download = False
         try:
             with YoutubeDL() as ytdl:
                 info_dict = await asyncio.to_thread(ytdl.extract_info, job["request"]["url"], download=False)
+
             max_size = job["policy"]["max_size_bytes"]
 
             formats = self._get_viable_formats(info_dict, max_size)
             print(f"Got {formats} for video {info_dict['webpage_url']}")
             if None in formats:
-                return # TODO: handle this later
-            # Cast the formats to strings so its easier to handle later
-            formats = [str(f) for f in formats]
-            format_ids = ",".join(f for f in formats)
-            params = self.params | {"format": format_ids}
+                can_direct_upload = False
+                formats = self._get_formats_below_size(info_dict, MAX_DOWNLOAD_SIZE_BYTES)
+                if None in formats:
+                    print(f"No viable download available. Exiting")
+                    can_download = False
+                    return # handle later
+                formats = [str(f) for f in formats]
+                format_ids = ",".join(f for f in formats)
+                params = self.params | {"format": format_ids}
+                with YoutubeDL(params) as ytdl:
+                    rc = await asyncio.to_thread(ytdl.download, job["request"]["url"])
 
-            with YoutubeDL(params) as ytdl:
-                rc = await asyncio.to_thread(ytdl.download, job["request"]["url"])
+
+            else:
+                can_direct_upload = True
+                # Cast the formats to strings so its easier to handle later
+                formats = [str(f) for f in formats]
+                format_ids = ",".join(f for f in formats)
+                params = self.params | {"format": format_ids}
+                with YoutubeDL(params) as ytdl:
+                    rc = await asyncio.to_thread(ytdl.download, job["request"]["url"])
+
             
             json_outfile = DOWNLOADS_DIR / Path(info_dict["id"]) / Path("info.json")
             info_dict.update({"formats": [f for f in info_dict["formats"] if f["format_id"] in formats]})
             with open(json_outfile, "w") as jf:
                 json.dump(info_dict, jf)
 
+            fpaths = self._get_file_paths(info_dict, formats)
 
-
-
+            return DownloadResponse(info_dict, fpaths)
 
         except:
             raise
+
 
 
 
