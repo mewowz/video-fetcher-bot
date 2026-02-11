@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 
 import discord
 from discord.ext import commands
+from discord import app_commands
 
 # Move to ULID later
 import uuid
@@ -57,52 +58,67 @@ class DownloadVideoCog(commands.Cog):
 
         return bool(URL_VALID_HOST_RE.fullmatch(host))
 
+    @staticmethod
+    def _is_in_dms():
+        def predicate(self, interaction: discord.Interaction) -> bool:
+            return isinstance(interaction.channel, discord.DMChannel)
+        return app_commands.check(predicate)
 
-    @commands.command(name="dl")
-    @commands.cooldown(rate=2, per=10, type=commands.BucketType.user)  # basic safety
-    async def dl(self, ctx: commands.Context, *, url: str):
-        """
-        Usage: &dl <url>
-        """
+    @app_commands.command(name="dl", description="Download a video from various streaming sites!")
+    @app_commands.checks.cooldown(rate=2, per=10, key=lambda i: (i.user.id))
+    @_is_in_dms()
+    @app_commands.describe(
+        url="The url to the video you wish to download",
+        list_formats="Returns the list of available formats to download",
+        desired_filetype="The desired final video format (typically mp4 or webm)",
+        audio_format_id="The number denoting which audio format you wish to download",
+        video_format_id="The number denoting which video format you wish to download",
+        merge_formats="Whether or not you wish to receive one merged video or two separate files (audio & video)",
+        upload_to_discord="Whether or not to upload directly to discord **NOTE**: files WILL be 10MB or less; quality may suffer"
+    )
+    async def dl(self, 
+                 interaction: discord.Interaction, 
+                 url: str, 
+                 list_formats: bool = False,
+                 desired_filetype: str = None,
+                 audio_format_id: int = None,
+                 video_format_id: int = None,
+                 merge_formats: bool = True,
+                 upload_to_discord: bool = None,
+    ):
         vu = self._valid_url(url)
         if vu is False:
             # needs logging
-            return await ctx.reply("That URL is invalid.")
+            return await interaction.response.send_message("That URL is invalid.")
 
 
-        # In DMs, ctx.guild is None
-        guild_id = ctx.guild.id if ctx.guild else None
-        
-        # FOR NOW: Ensure that people can only use the bot in DMs
-        if guild_id is not None:
-            # Just log to the console and quit
-            print("Not in DMs. Doing nothing!")
-            return
-
-        # Immediately post a status message so we have a message_id to update later.
-        status_msg = await ctx.reply("Queued (starting soon...)")
+        await interaction.response.defer(thinking=True)
 
         job_id = uuid.uuid4().hex  # replace w/ ULID later
 
-        req = DownloadRequest(url=url)
+        req = DownloadRequest(url, "auto", desired_filetype, False)
         policy = JobPolicy()
 
-        payload = {
-            "v": 1,
+        payload = { # This thing is a mess but I'm gonna roll with it until I feel like refactoring the whole thing
+            "v": 1.01,
             "job_id": job_id,
             "created_at": int(time.time()),
             "request": {
                 "url": req.url,
                 "source": req.source,
-                "format": req.format,
+                "output_filetype": req.format,
                 "audio_only": req.audio_only,
+                "audio_fmt_id": audio_format_id,
+                "video_fmt_id": video_format_id,
+                "merge_formats": merge_formats,
+                "upload_to_discord": upload_to_discord
             },
             "reply": {
-                "channel_id": ctx.channel.id,
-                "guild_id": guild_id,
-                "requester_id": ctx.author.id,
-                "request_message_id": ctx.message.id,
-                "status_message_id": status_msg.id,
+                "channel_id": interaction.channel.id,
+                "guild_id": interaction.guild_id,
+                "requester_id": interaction.user.id,
+                "request_message_id": interaction.message.id,
+                "webook_url": interaction.followup.webook.url
             },
             "policy": {
                 "max_size_bytes": policy.max_size_bytes,
@@ -114,22 +130,9 @@ class DownloadVideoCog(commands.Cog):
             "result": None,
         }
 
-        # Store job record + enqueue job id
-
-        ## I overcomplicated this too early. I'm just going to use lpush/brpop for now
+        # Store job for workers to handle
         await self.redis.lpush("dlqueue", json.dumps(payload))
 
-        # Store the payload
-        #job_key = f"dl:job:{job_id}"
-        #await self.redis.set(job_key, json.dumps(payload), ex=60 * 60)  # 1h TTL for now
-
-        # Store the UUID for the job
-        #await self.redis.rpush("dl:in_queue", job_id)
-
-        # Later, if I care to make this more robust, move this from rpush to
-        # use streams + consumer groups (xadd/xgroup/...)
-
-        await status_msg.edit(content=f"Queued Job `{job_id}`\nYour download will be posted shortly.")
 
     @dl.error
     async def dl_error(self, ctx: commands.Context, error: Exception):

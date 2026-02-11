@@ -7,7 +7,15 @@ intents = discord.Intents.default()
 intents.guilds = True
 intents.message_content = True
 
-bot = commands.Bot(command_prefix="&", intents=intents)
+class DLBot(commands.Bot):
+    def __init__(self):
+        super().__init(command_prefix="&", intents=intents)
+
+    async def setup_hook(self):
+        await self.tree.sync()
+
+#bot = commands.Bot(command_prefix="&", intents=intents)
+bot = DLBot()
 
 async def init_bot():
     redis_aclient = redis.Redis()
