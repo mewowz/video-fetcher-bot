@@ -91,7 +91,6 @@ class DownloadVideoCog(commands.Cog):
             # needs logging
             return await interaction.response.send_message("That URL is invalid.")
 
-
         await interaction.response.defer(thinking=True)
 
         job_id = uuid.uuid4().hex  # replace w/ ULID later
@@ -135,12 +134,12 @@ class DownloadVideoCog(commands.Cog):
 
 
     @dl.error
-    async def dl_error(self, ctx: commands.Context, error: Exception):
+    async def dl_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         # Minimal friendly errors; add logging later.
-        if isinstance(error, commands.CommandOnCooldown):
-            await ctx.reply(f"Slow down a bit — try again in {error.retry_after:.1f}s.")
+        if isinstance(error, app_commands.CommandOnCooldown):
+            await interaction.response.send_message(f"Slow down a bit — try again in {error.retry_after:.1f} seconds.")
         else:
-            await ctx.reply("Something went wrong enqueuing that request.")
+            await interaction.response.send_message("Something went wrong enqueuing that request.")
             raise error  
 
 
