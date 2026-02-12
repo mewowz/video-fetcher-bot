@@ -9,8 +9,10 @@ from .config import DOWNLOADS_DIR, TMP_DOWNLOADS_DIR, MAX_DOWNLOAD_SIZE_BYTES, i
 
 @dataclass
 class DownloadResponse:
+    success: bool
     info_dict: dict
     paths: dict[str, tuple[Path, str]] # {"format_id": [ Path("/path/to/file.ext"), "ao" or "vo"] }
+    error_msg: str = None
 
 
 class YTDownloader:
@@ -120,7 +122,6 @@ class YTDownloader:
 
 
     async def _handle_job(self, job: dict):
-        can_direct_upload = False
         can_download = False
         try:
             with YoutubeDL() as ytdl:
@@ -130,13 +131,19 @@ class YTDownloader:
 
             formats = self._get_viable_formats(info_dict, max_size)
             print(f"Got {formats} for video {info_dict['webpage_url']}")
+
             if None in formats:
-                can_direct_upload = False
+                if job["request"]["upload_to_discord"] == True:
+                    return DownloadResponse(False, None, None, "Cannot directly upload to discord: no viable formats under 10MB")
+
                 formats = self._get_formats_below_size(info_dict, MAX_DOWNLOAD_SIZE_BYTES)
                 if None in formats:
                     print(f"No viable download available. Exiting")
                     can_download = False
-                    return # handle later
+                    return DownloadResponse(False, None, None, 
+                                            f"Cannot download video: no viable formats under policy max_size_bytes = {max_size}B"
+                            )
+
                 formats = [str(f) for f in formats]
                 format_ids = ",".join(f for f in formats)
                 params = self.params | {"format": format_ids}
@@ -145,7 +152,6 @@ class YTDownloader:
 
 
             else:
-                can_direct_upload = True
                 # Cast the formats to strings so its easier to handle later
                 formats = [str(f) for f in formats]
                 format_ids = ",".join(f for f in formats)
@@ -161,18 +167,8 @@ class YTDownloader:
 
             fpaths = self._get_file_paths(info_dict, formats)
 
-            return DownloadResponse(info_dict, fpaths)
+            return DownloadResponse(True, info_dict, fpaths, "")
 
         except:
             raise
 
-
-
-
-
-
-
-
-
-    async def stop(self):
-        self.ytdl.close()
