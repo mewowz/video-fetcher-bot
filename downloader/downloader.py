@@ -130,7 +130,56 @@ class YTDownloader:
             max_size = job["policy"]["max_size_bytes"]
 
             formats = self._get_viable_formats(info_dict, max_size)
+            formats_ao = [fmt for fmt in fmts if fmt["vcodec"] == "none" and fmt["acodec"] != "none"]
+            formats_vo = [fmt for fmt in fmts if fmt["vcodec"] != "none" and fmt["acodec"] == "none"]
+
             print(f"Got {formats} for video {info_dict['webpage_url']}")
+
+            # Handle case when user requests a specific format(s)
+            req_afmt_id = job["request"]["audio_format_id"]
+            req_vfmt_id = job["request"]["video_format_id"]
+            req_afmt = req_vfmt = None
+            format_ids = ""
+            if req_afmt_id is not None and not any(f["format_id"] == req_afmt_id for f in formats_ao):
+                return DownloadResponse(False, None, None, f"Requested audio format {req_afmt_id} is not a valid format id for this video")
+            else:
+                req_afmt = next((fmt for fmt in formats_ao if fmt["format_id"] == req_afmt_id), None)
+                if req_afmt is None:
+                    raise ValueError(f"Error finding format {req_afmt_id}")
+                format_ids += req_afmt_id + ","
+            if req_vfmt_id is not None and not any(f["format_id"] == req_vfmt_id for f in formats_vo):
+                return DownloadResponse(False, None, None, f"Requested video format {req_vfmt_id} is not a valid format id for this video")
+            else:
+                req_vfmt = next((fmt for fmt in formats_vo if fmt["format_id"] == req_vfmt_id), None)
+                if req_vfmt is None:
+                    raise ValueError(f"Error finding format {req_vfmt_id}")
+                format_ids += req_vfmt_id + ","
+
+            if format_ids != "":
+                format_ids = format_ids.rstrip(",")
+                # Make sure both downloads are below MAX_DOWNLOAD_SIZE_BYTES
+                #
+                # Policy should be updated to allow/disallow EACH file being less than MAX_DOWNLOAD_SIZE_BYTES
+                # or cumulatively be less than MAX_DOWNLOAD_SIZE_BYTES
+                if req_afmt is not None and req_afmt["filesize"] < MAX_DOWNLOAD_SIZE_BYTES:
+                    return DownloadResponse(False, None, None, f"Requested audio format {req_afmt_id} is too large ({req_afmt["filesize"]}B)")
+                if req_vfmt is not None and req_vfmt["filesize"] < MAX_DOWNLOAD_SIZE_BYTES:
+                    return DownloadResponse(False, None, None, f"Requested video format {req_vfmt_id} is too large ({req_vfmt["filesize"]}B)")
+
+                params = self.params | {"format": format_ids}
+                with YoutubeDL(params) as ytdl:
+                    rc = await asyncio.to_thread(ytdl.download, job["request"]["url"])
+
+                json_outfile = DOWNLOADS_DIR / Path(info_dict["id"]) / Path("info.json")
+                formats = [req_afmt, req_vfmt]
+                formats = [f for f in formats if f is not None]
+                info_dict.update({"formats": formats})
+                with open(json_outfile, "w") as jf:
+                    json.dump(info_dict, jf)
+
+                fpaths = self._get_file_paths(info_dict, formats)
+                
+                return DownloadResponse(True, info_dict, fpaths, "")
 
             if None in formats:
                 if job["request"]["upload_to_discord"] == True:
