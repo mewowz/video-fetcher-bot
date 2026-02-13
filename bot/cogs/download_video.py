@@ -120,7 +120,7 @@ class DownloadVideoCog(commands.Cog):
                 "webook_url": interaction.followup.webook.url
             },
             "policy": {
-                "max_size_bytes": policy.max_size_bytes,
+                "discord_max_size_bytes": policy.max_size_bytes,
                 "prefer_discord_upload": policy.prefer_discord_upload,
             },
             # Worker fills these in:
