@@ -2,9 +2,11 @@ import asyncio
 import json
 from yt_dlp import YoutubeDL
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
+import logging
 
 from .config import DOWNLOADS_DIR, TMP_DOWNLOADS_DIR, MAX_DOWNLOAD_SIZE_BYTES, init_dirs
+from .dl_logger import get_stdout_logger, WorkerLogger
 
 
 @dataclass
@@ -14,10 +16,12 @@ class DownloadResponse:
     paths: dict[str, tuple[Path, str]] # {"format_id": [ Path("/path/to/file.ext"), "ao" or "vo"] }
     error_msg: str = None
 
+    def __str__(self):
+        return json.dumps(asdict(self))
+
 
 class YTDownloader:
-
-    def __init__(self, name: str, redis_conn, params: dict = {}):
+    def __init__(self, name: str, redis_conn, params: dict = {}, logger: logging.Logger = None):
         default_params = {
                     "postprocessors": [], # necessary so that yt-dlp doesn't call ffmpeg on its own
                     "paths": { "home": str(DOWNLOADS_DIR), "temp": "tmp" },
@@ -28,6 +32,10 @@ class YTDownloader:
         self.params = default_params | params
 
         init_dirs()
+        
+        base_logger = logger = logger or get_stdout_logger()
+        self.logger = WorkerLogger(base_logger)
+        self.params["logger"] = self.logger
 
 
     async def run(self):
@@ -35,8 +43,19 @@ class YTDownloader:
             try:
                 _, job = await self.redis_conn.brpop("dlqueue") # Just wait forever until a job shows up
                 job = json.loads(job)
+                self.logger.info(f"Got job ({job['job_id'][:5]}...): {job}")
                 rc = await self._handle_job(job)
-            except:
+                self.logger.debug(f"YoutubeDL._handle_job(job) returned {str(rc)}")
+                    f"YoutubeDL._handle_job(job) returned {str(rc)}"
+                    self.logger.info(f"Job {job['job'][:5]}... returned successfully")
+                if not rc.success:
+                    self.logger.info(
+                                f"Job {job['job'][:5]}... returned with error: "
+                                f"{rc.error_msg}"
+                    )
+
+            except Exception as e:
+                self.logger.error("Error in _handle_job", exc_info=True)
                 raise
 
     def _get_viable_formats(self, info_dict: dict, max_size_bytes: int,
@@ -129,17 +148,26 @@ class YTDownloader:
 
 
     async def _handle_job(self, job: dict):
+        self.logger.debug(f"Calling YoutubeDL.extract_info for URL: '{job['request']['url']}'")
         try:
+            
             with YoutubeDL() as ytdl:
                 info_dict = await asyncio.to_thread(ytdl.extract_info, job["request"]["url"], download=False)
-        except:
+        except Exception as e:
+            self.logger.error(f"Failed to extract_info for url {job['request']['url']}", exc_info=True)
             raise
+
+        self.logger.debug(
+            f"YoutubeDL.extract_video successful for URL: "
+            f"'{job['request']['url']}'"
+        )
 
         # Determine the job type and defer to the according class method
         requested_format_ids = [
             job["request"]["audio_fmt_id"],
             job["request"]["video_fmt_id"]
         ]
+
 
         if any(fmt != None for fmt in requested_format_ids): 
             # User specified custom formats to download
@@ -159,11 +187,18 @@ class YTDownloader:
             # Just try and download a video below the max download size and serve it to the user from our servers
             r = await self._job_serve_on_server(info_dict, job)
 
+
+
         return r
 
     async def _job_direct_discord_upload(self, info_dict: dict, job: dict):
+        self.logger.debug("Processing job in YTDownloader._job_direct_discord_upload")
         max_size_bytes = job["policy"]["discord_max_size_bytes"]
         formats = self._get_viable_formats(info_dict, max_size_bytes)
+        self.logger.debug(
+            f"self._get_viable_formats(info_dict, max_size_bytes = {max_size_bytes}) returned "
+            f"{formats}"
+        )
         if None in formats:
             return DownloadResponse(False, None, None, 
                                     "No valid audio+video formats cumulatively "
@@ -171,46 +206,73 @@ class YTDownloader:
         formats = [str(f) for f in formats]
         format_ids = ",".join(f for f in formats)
         params = self.params | {"format": format_ids}
-        try:
+        self.logger.debug(    
+            "Attempting to download video with params = "
+            f"{params}"
+        )
+        try:                  
             with YoutubeDL(params) as ytdl:
                 rc = await asyncio.to_thread(ytdl.download, job["request"]["url"])
-        except:
+        except Exception as e:
+            self.logger.error("Error downloading video", exc_info=True)
             raise
 
+        self._write_json_file(info_dict, formats)
         fpaths = self._get_file_paths(info_dict, formats)
+
+        self.logger.debug("Download successful!")
 
         return DownloadResponse(True, info_dict, fpaths, "")
 
 
     async def _job_serve_from_server(self, info_dict: dict, job: dict):
+        self.logger.debug("Processing job in YTDownloader._job_serve_from_server")
         formats = self._get_formats_below_size(info_dict, MAX_DOWNLOAD_SIZE_BYTES)
+        self.logger.debug(
+            "YTDownloader._get_formats_below_size(info_dict, "
+            f"MAX_DOWNLOAD_SIZE_BYTES = {MAX_DOWNLOAD_SIZE_BYTES}) = "
+            f"{formats}"
+        )
+
         if None in formats:
-            print(f"No viable download available. Exiting")
-            return DownloadResponse(False, None, None, 
-                                    "Cannot download video: "
-                                    f"no viable formats under size MAX_DOWNLOAD_SIZE_BYTES = {MAX_DOWNLOAD_SIZE_BYTES}B")
+            return DownloadResponse(
+                False, None, None, 
+                "Cannot download video: "
+                f"no viable formats under size MAX_DOWNLOAD_SIZE_BYTES = {MAX_DOWNLOAD_SIZE_BYTES}B"
+            )
+
         formats = [str(f) for f in formats]
         format_ids = ",".join(f for f in formats)
         params = self.params | {"format": format_ids}
+        self.logger.debug(
+            "Attempting to download video with params = "
+            f"{params}"
+        ) 
         try:
             with YoutubeDL(params) as ytdl:
                 rc = await asyncio.to_thread(ytdl.download, job["request"]["url"])
-        except:
+        except Exception as e:
+            self.logger.error("Error downloading video", exc_info=True)
             raise
 
+        self._write_json_file(info_dict, formats)
         fpaths = self._get_file_paths(info_dict, formats)
+
+        self.logger.debug("Download successful!")
 
         return DownloadResponse(True, info_dict, fpaths, "")
 
 
     async def _job_custom_formats(self, info_dict: dict, job: dict):
+        self.logger.debug("Processing job in YTDownloader._job_custom_formats")
+
         fmts = info_dict["formats"]
 
         formats_ao = [fmt for fmt in fmts if fmt["vcodec"] == "none" and fmt["acodec"] != "none"]
         formats_vo = [fmt for fmt in fmts if fmt["vcodec"] != "none" and fmt["acodec"] == "none"]
 
-        req_afmt_id = job["request"]["audio_format_id"]
-        req_vfmt_id = job["request"]["video_format_id"]
+        req_afmt_id = job["request"]["audio_fmt_id"]
+        req_vfmt_id = job["request"]["video_fmt_id"]
         req_afmt = req_vfmt = None
         format_ids = ""
 
@@ -218,6 +280,7 @@ class YTDownloader:
             return DownloadResponse(False, None, None, f"Requested audio format {req_afmt_id} is not a valid format id for this video")
         else:
             req_afmt = next((fmt for fmt in formats_ao if fmt["format_id"] == req_afmt_id), None)
+            self.logger.debug(f"Got req_afmt = {req_afmt}")
             if req_afmt is None:
                 raise ValueError(f"Error finding format {req_afmt_id}")
             format_ids += req_afmt_id + ","
@@ -225,32 +288,45 @@ class YTDownloader:
             return DownloadResponse(False, None, None, f"Requested video format {req_vfmt_id} is not a valid format id for this video")
         else:
             req_vfmt = next((fmt for fmt in formats_vo if fmt["format_id"] == req_vfmt_id), None)
+            self.logger.debug(f"Got req_vfmt = {req_vfmt}")
             if req_vfmt is None:
                 raise ValueError(f"Error finding format {req_vfmt_id}")
             format_ids += req_vfmt_id + ","
 
         format_ids = format_ids.rstrip(",")
+        self.logger.debug(f"Got format_ids = {format_ids}")
         # Make sure both downloads are below MAX_DOWNLOAD_SIZE_BYTES
         #
         # Policy should be updated to allow/disallow EACH file being less than MAX_DOWNLOAD_SIZE_BYTES
         # or cumulatively be less than MAX_DOWNLOAD_SIZE_BYTES
+        self.logger.debug(
+            f"req_afmt['filesize'] = {req_afmt['filesize']}, "
+            f"req_vfmt['filesize'] = {req_vfmt['filesize']}"
+        )
         if req_afmt is not None and req_afmt["filesize"] < MAX_DOWNLOAD_SIZE_BYTES:
             return DownloadResponse(False, None, None, f"Requested audio format {req_afmt_id} is too large ({req_afmt["filesize"]}B)")
         if req_vfmt is not None and req_vfmt["filesize"] < MAX_DOWNLOAD_SIZE_BYTES:
             return DownloadResponse(False, None, None, f"Requested video format {req_vfmt_id} is too large ({req_vfmt["filesize"]}B)")
 
         params = self.params | {"format": format_ids}
+        self.logger.debug(
+            "Attempting to download video with params = "
+            f"{params}"
+        )
         try:
             with YoutubeDL(params) as ytdl:
                 rc = await asyncio.to_thread(ytdl.download, job["request"]["url"])
-        except:
+        except Exception as e:
+            self.logger.error("Error downloading video", exc_info=True)
             raise
 
 
         formats = [req_afmt, req_vfmt]
-        self._write_json_file(info_dict, formats)
 
+        self._write_json_file(info_dict, formats)
         fpaths = self._get_file_paths(info_dict, formats)
+
+        self.logger.debug("Download successful!")
 
         return DownloadResponse(True, info_dict, fpaths, "")
 
