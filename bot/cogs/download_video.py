@@ -11,6 +11,8 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
+from utils.logging_utils import get_std_logger, get_cog_logger
+
 # Move to ULID later
 import uuid
 
@@ -45,9 +47,11 @@ class DownloadVideoCog(commands.Cog):
     Enqueues download jobs into Redis; does NOT download or upload here.
     """
 
-    def __init__(self, bot: commands.Bot, redis):
+    def __init__(self, bot: commands.Bot, redis, logger = None):
         self.bot = bot
         self.redis = redis  # expects an asyncio redis client (redis.asyncio)
+        base_logger = logger or get_stdout_logger(self.__class__.__name__)
+        self.logger = base_logger # Here in case we expand this to a LoggerAdapter class
 
     def _valid_url(self, url: str):
         url = url.strip().strip("<>")
@@ -86,12 +90,23 @@ class DownloadVideoCog(commands.Cog):
                  merge_formats: bool = True,
                  upload_to_discord: bool = None,
     ):
+        self.logger.info(
+                f"Receieved request from {interaction.user.id} "
+                f"to download video {url}"
+        )
+        self.logger.debug(
+                f"[dl] receieved args {json.dumps(locals())}"
+        )
+
         vu = self._valid_url(url)
+        self.logger.debug(f"[dl] self._valid_url(url = {url}) = {vu}")
         if vu is False:
-            # needs logging
+            self.logger.debug(f"[dl] Reporting URL validity and returning")
             return await interaction.response.send_message("That URL is invalid.")
 
+        self.logger.debug(f"[dl] Deferring with thinking=True")
         await interaction.response.defer(thinking=True)
+        self.logger.debug(f"[dl] Defer successful")
 
         job_id = uuid.uuid4().hex  # replace w/ ULID later
 
@@ -128,25 +143,43 @@ class DownloadVideoCog(commands.Cog):
             "error": None,
             "result": None,
         }
+        self.logger.debug(
+                f"[dl] Pushing job to 'dlqueue' on valkey server "
+                f"with payload {json.dumps(payload)}
+        )
 
         # Store job for workers to handle
         await self.redis.lpush("dlqueue", json.dumps(payload))
 
+        self.logger.info("[dl] Successfully pushed job to queue. Returning")
+
 
     @dl.error
     async def dl_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
-        # Minimal friendly errors; add logging later.
+        self.logger.error(f"[dl] Receieved error for interaction {interaction.id}: {error}")
         if isinstance(error, app_commands.CommandOnCooldown):
             await interaction.response.send_message(f"Slow down a bit — try again in {error.retry_after:.1f} seconds.")
+        elif isinstance(error, discord.HTTPException):
+            self._handle_http_err(error)
+        elif isinstance(error, discord.InteractionResponded):
+            self.logger.error(
+                "[dl] Ignoring already responded interaction with "
+                f"interaction ID {interaction.id}"
+            )
+            return
         else:
             await interaction.response.send_message("Something went wrong enqueuing that request.")
+            self.logger.error(f"[dl] Unhandled error for interaction {interaction.id}")
             raise error  
 
 
-async def setup(bot: commands.Bot):
+async def setup(bot: commands.Bot, logger: logging.Logger = None):
     # You must pass a redis client into the cog.
     # I'd recommend setting bot.redis = redis_client in bot.py
-    cog = DownloadVideoCog(bot, redis=getattr(bot, "redis", None))
+    if logger is None:
+        logger = get_cog_logger(DownloadVideoCog.__name__, level=logging.DEBUG)
+
+    cog = DownloadVideoCog(bot, redis=getattr(bot, "redis", None), logger)
     if cog.redis is None:
         raise RuntimeError("Redis client not found on bot (set bot.redis first).")
     await bot.add_cog(cog)

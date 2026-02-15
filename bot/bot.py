@@ -14,7 +14,6 @@ class DLBot(commands.Bot):
     async def setup_hook(self):
         await self.tree.sync()
 
-#bot = commands.Bot(command_prefix="&", intents=intents)
 bot = DLBot()
 
 async def init_bot():
