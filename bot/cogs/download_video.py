@@ -121,6 +121,7 @@ class DownloadVideoCog(commands.Cog):
                 "url": req.url,
                 "source": req.source,
                 "output_filetype": req.format,
+                "list_formats": list_formats,
                 "audio_only": req.audio_only,
                 "audio_fmt_id": audio_format_id,
                 "video_fmt_id": video_format_id,

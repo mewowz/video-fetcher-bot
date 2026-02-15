@@ -1,13 +1,17 @@
 import asyncio
 import json
+import logging
 from yt_dlp import YoutubeDL
 from pathlib import Path
 from dataclasses import dataclass, asdict
-import logging
+from enum import IntEnum
 
 from .config import DOWNLOADS_DIR, TMP_DOWNLOADS_DIR, MAX_DOWNLOAD_SIZE_BYTES, init_dirs
 from .dl_logger import get_stdout_logger, WorkerLogger
 
+class ResponseType(IntEnum):
+    DOWNLOAD_RESPONSE = 1
+    LIST_FORMATS_RESPONSE = 2
 
 @dataclass
 class DownloadResponse:
@@ -15,10 +19,15 @@ class DownloadResponse:
     info_dict: dict
     paths: dict[str, tuple[Path, str]] # {"format_id": [ Path("/path/to/file.ext"), "ao" or "vo"] }
     error_msg: str = None
+    type: ResponseType = ResponseType.DOWNLOAD_RESPONSE
 
     def __str__(self):
         return json.dumps(asdict(self))
 
+@dataclass
+class ListFormatsResponse(DownloadResponse):
+    formats: list[dict] = None
+    type: ResponseType = ResponseType.LIST_FORMATS_RESPONSE
 
 class YTDownloader:
     def __init__(self, name: str, redis_conn, params: dict = {}, logger: logging.Logger = None):
@@ -147,10 +156,18 @@ class YTDownloader:
             json.dump(info_dict, jf)
 
 
+    def _list_fmts(self, info_dict: dict):
+        # Filter out storyboards
+        fmts = [f for f in info_dict["formats"] if f["format_note"] != "storyboard"]
+        formats_ao = [fmt for fmt in fmts if fmt["vcodec"] == "none" and fmt["acodec"] != "none"]
+        formats_vo = [fmt for fmt in fmts if fmt["vcodec"] != "none" and fmt["acodec"] == "none"]
+        formats_av = [fmt for fmt in fmts if fmt["vcodec"] != "none" and fmt["acodec"] != "none"]
+
+        return {"ao": formats_ao, "vo": formats_vo, "av": formats_av}
+
     async def _handle_job(self, job: dict):
         self.logger.debug(f"Calling YoutubeDL.extract_info for URL: '{job['request']['url']}'")
         try:
-            
             with YoutubeDL() as ytdl:
                 info_dict = await asyncio.to_thread(ytdl.extract_info, job["request"]["url"], download=False)
         except Exception as e:
@@ -161,6 +178,10 @@ class YTDownloader:
             f"YoutubeDL.extract_video successful for URL: "
             f"'{job['request']['url']}'"
         )
+
+        if job["request"]["list_formats"]:
+            filtered_formats = self._list_fmts(info_dict)
+            return ListFormatsResponse(True, None, None, "", filtered_formats)
 
         # Determine the job type and defer to the according class method
         requested_format_ids = [
