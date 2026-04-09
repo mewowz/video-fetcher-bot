@@ -11,7 +11,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-from utils.logging_utils import get_std_logger, get_cog_logger
+from utils.logging_utils import get_stdout_logger, get_cog_logger
 
 # Move to ULID later
 import uuid
@@ -63,6 +63,53 @@ class DownloadVideoCog(commands.Cog):
         return bool(URL_VALID_HOST_RE.fullmatch(host))
 
     @staticmethod
+    def _create_job_dict(
+        self,
+        interaction: discord.Interaction,
+        job_id: int,
+        dl_request: DownloadRequest,
+        policy: JobPolicy,
+        list_formats: bool,
+        audio_format_id: int,
+        video_format_id: int,
+        merge_formats: bool,
+        upload_to_discord: bool,
+    ):
+        payload = { 
+            "v": 1.01,
+            "job_id": job_id,
+            "created_at": int(time.time()),
+            "request": {
+                "url": dl_request.url,
+                "source": dl_request.source,
+                "output_filetype": dl_request.format,
+                "list_formats": list_formats,
+                "audio_only": dl_request.audio_only,
+                "audio_fmt_id": audio_format_id,
+                "video_fmt_id": video_format_id,
+                "merge_formats": merge_formats,
+                "upload_to_discord": upload_to_discord
+            },
+            "reply": {
+                "channel_id": interaction.channel.id,
+                "guild_id": interaction.guild_id,
+                "requester_id": interaction.user.id,
+                "request_message_id": interaction.message.id,
+                "webook_url": interaction.followup.webook.url
+            },
+            "policy": {
+                "discord_max_size_bytes": policy.max_size_bytes,
+                "prefer_discord_upload": policy.prefer_discord_upload,
+            },
+            # Worker fills these in:
+            "status": "queued",
+            "error": None,
+            "result": None,
+        }
+
+        return payload
+
+    @staticmethod
     def _is_in_dms():
         def predicate(self, interaction: discord.Interaction) -> bool:
             return isinstance(interaction.channel, discord.DMChannel)
@@ -80,15 +127,16 @@ class DownloadVideoCog(commands.Cog):
         merge_formats="Whether or not you wish to receive one merged video or two separate files (audio & video)",
         upload_to_discord="Whether or not to upload directly to discord **NOTE**: files WILL be 10MB or less; quality may suffer"
     )
-    async def dl(self, 
-                 interaction: discord.Interaction, 
-                 url: str, 
-                 list_formats: bool = False,
-                 desired_filetype: str = None,
-                 audio_format_id: int = None,
-                 video_format_id: int = None,
-                 merge_formats: bool = True,
-                 upload_to_discord: bool = None,
+    async def dl(
+        self, 
+        interaction: discord.Interaction, 
+        url: str, 
+        list_formats: bool = False,
+        desired_filetype: str = None,
+        audio_format_id: int = None,
+        video_format_id: int = None,
+        merge_formats: bool = True,
+        upload_to_discord: bool = None,
     ):
         self.logger.info(
                 f"Receieved request from {interaction.user.id} "
@@ -113,40 +161,15 @@ class DownloadVideoCog(commands.Cog):
         req = DownloadRequest(url, "auto", desired_filetype, False)
         policy = JobPolicy()
 
-        payload = { # This thing is a mess but I'm gonna roll with it until I feel like refactoring the whole thing
-            "v": 1.01,
-            "job_id": job_id,
-            "created_at": int(time.time()),
-            "request": {
-                "url": req.url,
-                "source": req.source,
-                "output_filetype": req.format,
-                "list_formats": list_formats,
-                "audio_only": req.audio_only,
-                "audio_fmt_id": audio_format_id,
-                "video_fmt_id": video_format_id,
-                "merge_formats": merge_formats,
-                "upload_to_discord": upload_to_discord
-            },
-            "reply": {
-                "channel_id": interaction.channel.id,
-                "guild_id": interaction.guild_id,
-                "requester_id": interaction.user.id,
-                "request_message_id": interaction.message.id,
-                "webook_url": interaction.followup.webook.url
-            },
-            "policy": {
-                "discord_max_size_bytes": policy.max_size_bytes,
-                "prefer_discord_upload": policy.prefer_discord_upload,
-            },
-            # Worker fills these in:
-            "status": "queued",
-            "error": None,
-            "result": None,
-        }
+        payload = self._create_job_dict(
+            interaction, job_id, req, policy, list_formats, 
+            audio_format_id, video_format_id, merge_formats,
+            upload_to_discord
+        )
+        
         self.logger.debug(
                 f"[dl] Pushing job to 'dlqueue' on valkey server "
-                f"with payload {json.dumps(payload)}
+                f"with payload {json.dumps(payload)}"
         )
 
         # Store job for workers to handle
@@ -180,7 +203,7 @@ async def setup(bot: commands.Bot, logger: logging.Logger = None):
     if logger is None:
         logger = get_cog_logger(DownloadVideoCog.__name__, level=logging.DEBUG)
 
-    cog = DownloadVideoCog(bot, redis=getattr(bot, "redis", None), logger)
+    cog = DownloadVideoCog(bot, redis=getattr(bot, "redis", None), logger=logger)
     if cog.redis is None:
         raise RuntimeError("Redis client not found on bot (set bot.redis first).")
     await bot.add_cog(cog)

@@ -4,7 +4,7 @@ import os
 
 class WorkerLogger(logging.LoggerAdapter):
     def __init__(self, base_logger: logging.Logger, extra={}):
-        super()__init__(base_logger, extra)
+        super().__init__(base_logger, extra)
         self.job_id = None
 
     def set_job_id(self, job_id):

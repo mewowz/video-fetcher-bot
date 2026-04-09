@@ -50,13 +50,14 @@ class YTDownloader:
     async def run(self):
         while True:
             try:
+                # TODO: Turn this into a loop method within the class
+                # and just call await self._job_loop()
                 _, job = await self.redis_conn.brpop("dlqueue") # Just wait forever until a job shows up
                 job = json.loads(job)
                 self.logger.info(f"Got job ({job['job_id'][:5]}...): {job}")
                 rc = await self._handle_job(job)
                 self.logger.debug(f"YoutubeDL._handle_job(job) returned {str(rc)}")
-                    f"YoutubeDL._handle_job(job) returned {str(rc)}"
-                    self.logger.info(f"Job {job['job'][:5]}... returned successfully")
+                self.logger.info(f"Job {job['job'][:5]}... returned successfully")
                 if not rc.success:
                     self.logger.info(
                                 f"Job {job['job'][:5]}... returned with error: "
@@ -150,7 +151,7 @@ class YTDownloader:
 
     def _write_json_file(self, info_dict: dict, formats: list):
         json_outfile = DOWNLOADS_DIR / Path(info_dict["id"]) / Path("info.json")
-        formats = [f for f in formats if f is not None]
+        formats = [fmt for fmt in info_dict["formats"] if fmt["format_id"] in formats]
         info_dict |= {"formats": formats}
         with open(json_outfile, "w") as jf:
             json.dump(info_dict, jf)
@@ -200,7 +201,7 @@ class YTDownloader:
             # The producer specified we should prioritize uploads directly to discord
             # This can fail if there are downloads too big to download + merge and upload to discord
             # "Prefer" is just a "try it first, still serve if we can't get small files"
-            r = await self._job_direct_upload_discord(info_dict, job)
+            r = await self._job_direct_discord_upload(info_dict, job)
             # Handle the case where this fails
             if not r.success:
                 r = await self._job_serve_on_server(info_dict, job)

@@ -1,4 +1,6 @@
 import logging
+import os
+import sys
 
 def get_stdout_logger(name: str, level=logging.INFO):
     logger = logging.getLogger(name)
@@ -18,7 +20,7 @@ def get_cog_logger(
     logfile: os.PathLike = None,
     console: bool = True
 ):
-    logger = logging.getLogger(f"cog.{cog}")
+    logger = logging.getLogger(f"cog.{cog_name}")
 
     if not logger.handlers:
         formatter = logging.Formatter(
