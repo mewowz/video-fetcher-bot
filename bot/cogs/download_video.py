@@ -14,7 +14,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-from utils.logging_utils import get_stdout_logger, get_cog_logger
+#from utils.logging_utils import get_stdout_logger, get_cog_logger
 
 # Move to ULID later
 import uuid
@@ -50,11 +50,11 @@ class DownloadVideoCog(commands.Cog):
     Enqueues download jobs into Redis; does NOT download or upload here.
     """
 
-    def __init__(self, bot: commands.Bot, redis, logger = None):
+    def __init__(self, bot: commands.Bot, redis, custom_logger = None):
         self.bot = bot
         self.redis = redis  # expects an asyncio redis client (redis.asyncio)
-        base_logger = logger or get_stdout_logger(self.__class__.__name__)
-        self.logger = base_logger # Here in case we expand this to a LoggerAdapter class
+        self.logger = custom_logger or logger # Here in case we expand this to a LoggerAdapter class
+        self.logger.debug(f"{self.__class__.__name__} Init done")
 
     def _valid_url(self, url: str):
         url = url.strip().strip("<>")
@@ -207,7 +207,7 @@ async def setup(bot: commands.Bot, custom_logger: logging.Logger = None):
         #logger = get_cog_logger(DownloadVideoCog.__name__, level=logging.DEBUG)
         custom_logger = logger
 
-    cog = DownloadVideoCog(bot, redis=getattr(bot, "redis", None), logger=custom_logger)
+    cog = DownloadVideoCog(bot, redis=getattr(bot, "redis", None), custom_logger=custom_logger)
     if cog.redis is None:
         raise RuntimeError("Redis client not found on bot (set bot.redis first).")
     await bot.add_cog(cog)
