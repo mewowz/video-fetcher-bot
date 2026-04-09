@@ -1,6 +1,9 @@
 import asyncio
 import redis
 
+import logging
+logger = logging.getLogger(__name__)
+
 from yt_dlp import YoutubeDL
 
 YTDL_OPTS_BASE = {

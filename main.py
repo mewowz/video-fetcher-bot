@@ -1,6 +1,15 @@
+import logging
 import os
 import asyncio
+import sys
 from bot.bot import bot, init_bot
+
+logging.basicConfig(
+        level=logging.DEBUG,
+        format="[%(asctime)s] [%(name)s.%(funcName)s] %(levelname)s: %(message)s",
+        stream=sys.stdout
+)
+logging.getLogger("discord").setLevel(logging.WARNING)
 
 async def main():
     token = os.environ.get("DISCORD_TOKEN", "")

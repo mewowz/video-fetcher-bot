@@ -1,8 +1,10 @@
 import asyncio
 import redis
 import json
-import logging
 import sys
+
+import logging
+logger = logging.getLogger(__name__)
 
 from urllib.parse import urlparse
 from uuid import uuid4
@@ -28,24 +30,21 @@ class Downloader:
             "cold_dl_path": Path.cwd() / Path("data") / Path("videos"),
     }
 
-    def __init__(self, name: str, ytdlp_opts: dict, logger: logging.Logger = None, downloader_opts: dict = dict()):
+    def __init__(
+            self, 
+            name: str, 
+            ytdlp_opts: dict, 
+            custom_logger: logging.Logger = None, 
+            downloader_opts: dict = dict()
+    ):
         self.name = name
         self.downloader_opts = (Downloader.DEFAULT_DOWNLOADER_OPTS | downloader_opts)
 
-        if not isinstance(logger, logging.Logger):
+        if not isinstance(custom_logger, logging.Logger):
             # Make an stdout logger so it's a lot easier to read while doing initial testing
-            self.logger = logging.getLogger(name)
-            self.logger.setLevel(logging.DEBUG)
-            handler = logging.StreamHandler(sys.stdout)
-            handler.setFormatter(
-                    logging.Formatter(
-                        "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-                        )
-                    )
-            self.logger.addHandler(handler)
-            self.logger.propagate = False
-        else:
             self.logger = logger
+        else:
+            self.logger = custom_logger
 
         self.ytdlp_opts = (YTDL_OPTS_BASE | ytdlp_opts)
         self.ytdlp_opts["logger"] = self.logger

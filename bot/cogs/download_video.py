@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import logging
+logger = logging.getLogger(__name__)
+
 import time
 import json
 import re
@@ -197,13 +200,14 @@ class DownloadVideoCog(commands.Cog):
             raise error  
 
 
-async def setup(bot: commands.Bot, logger: logging.Logger = None):
+async def setup(bot: commands.Bot, custom_logger: logging.Logger = None):
     # You must pass a redis client into the cog.
     # I'd recommend setting bot.redis = redis_client in bot.py
-    if logger is None:
-        logger = get_cog_logger(DownloadVideoCog.__name__, level=logging.DEBUG)
+    if not isinstance(custom_logger, logging.Logger):
+        #logger = get_cog_logger(DownloadVideoCog.__name__, level=logging.DEBUG)
+        custom_logger = logger
 
-    cog = DownloadVideoCog(bot, redis=getattr(bot, "redis", None), logger=logger)
+    cog = DownloadVideoCog(bot, redis=getattr(bot, "redis", None), logger=custom_logger)
     if cog.redis is None:
         raise RuntimeError("Redis client not found on bot (set bot.redis first).")
     await bot.add_cog(cog)
