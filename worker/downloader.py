@@ -27,7 +27,13 @@ YTDL_OPTS_BASE = {
  
 class Downloader:
     DEFAULT_DOWNLOADER_OPTS = {
-            "cold_dl_path": Path.cwd() / Path("data") / Path("videos"),
+            "local_dl_path": Path.cwd() / Path("data") / Path("videos"),
+    }
+
+    VALID_DOWNLOAD_LOCATION_TYPES = {
+        "local",
+        "tmp",
+        "remote",
     }
 
     def __init__(
@@ -41,38 +47,83 @@ class Downloader:
         self.downloader_opts = (Downloader.DEFAULT_DOWNLOADER_OPTS | downloader_opts)
 
         if not isinstance(custom_logger, logging.Logger):
-            # Make an stdout logger so it's a lot easier to read while doing initial testing
             self.logger = logger
         else:
             self.logger = custom_logger
 
         self.ytdlp_opts = (YTDL_OPTS_BASE | ytdlp_opts)
         self.ytdlp_opts["logger"] = self.logger
-        self.logger.debug(f"Created worker '{self.name}'")
+        self.logger.debug(f"Created Downloader '{self.name}'")
+
+        if downloader_opts.get("dl_type") in VALID_DOWNLOAD_LOCATION_TYPES:
+            self.dl_type = downloader_opts["dl_type"]
+
 
         try:
-            self.downloader_opts["cold_dl_path"].mkdir(parents=True, exist_ok=True)
+            self.downloader_opts["local_dl_path"].mkdir(parents=True, exist_ok=True)
         except FileExistsError as e:
-            self.logger.error(f"Unable to create dir for saving videos @ '{str(self.downloader_opts['cold_dl_path'])}'")
+            self.logger.error(f"Unable to create dir for saving videos @ '{str(self.downloader_opts['local_dl_path'])}'")
             raise # for now, just exit so I don't have to worry about this right now
 
-    def _extract_info(self, link: str, extra_opts: dict = {}):
+    def download(self, link: str, extra_opts: dict = {}):
+        if not isinstance(extra_opts, dict):
+            self.logger.error(f"Argument 'extra_opts' is not of instance 'dict'")
+            raise ValueError(f"Argument 'extra_opts' is not of instance 'dict'")
+
+
+        try:
+            self.logger.debug(f"Fetching video info for {link}.")
+            video_info = self._extract_info(link, extra_opts) # for later
+            self.logger.debug(f"Successfuly obtained video info for {link}")
+        except Exception as e:
+            self.logger.debug(f"Got unknown error: {e}.\nRe-raising exception")
+            raise
+
+
+        try:
+            self.logger.debug(f"Obtaining unique download path for video {link} for dl_type={self.dl_type}")
+            dl_path = self._get_unique_dl_path(video_info.get("id"), dl_type=self.dl_type)
+            self.logger.debug(f"Successfully obtained unique download path for video {link} "
+                              f"@ {dl_path}")
+        except FileExistsError as e:
+            self.logger.debug(f"Could not obtain unique download path for video {link} with dl_type={self.dl_type}")
+            raise
+        except NotImplementedError as e:
+            self.logger.debug(f"dl_type={self.dl_type} is not implemented for Downloader._get_unique_dl_path()")
+            raise
+
+        
+        try:
+            self.logger.debug(f"Downloading video @ {link} to {str(dl_path)}")
+            rc = self._download_video(link, ({"home": dl_path} | extra_opts) )
+            self.logger.debug(f"Successfully downloaded video {link}")
+        except Exception as e:
+            self.logger.debug(f"Got unknown error: {e}.\nRe-raising exception")
+            raise
+
+    def _extract_info(self, link: str, extra_opts: dict = {}) -> dict:
         with YoutubeDL(self.ytdlp_opts | extra_opts) as ydl:
-            info = ydl.extract_info(link, download=False)
-        return info
+            video_info_dict = ydl.extract_info(link, download=False)
+        if video_info_dict == None:
+            raise Exception("Could not fetch video info")
+        return video_info_dict
 
     def _download_video(self, link: str, extra_opts: dict = {}):
         with YoutubeDL(self.ytdlp_opts | extra_opts) as ydl:
-            e = ydl.download([link])
-        return e
+            err_code = ydl.download([link])
+        return err_code
 
-    def _get_unq_dl_path(self, video_id: str, dl_type: str) -> Path:
+    def _get_unique_dl_path(self, video_id: str, dl_type: str) -> Path:
         if dl_type == "tmp":
-            pass
-        elif dl_type == "cold":
+            raise NotImplementedError("'tmp' storage type is not yet implemented")
+            return None
+        elif dl_type == "remote":
+            raise NotImplementedError("'remote' storage type is not yet implemented")
+            return None
+        elif dl_type == "local":
             try:
                 p = (
-                        self.downloader_opts.get("cold_dl_path")
+                        self.downloader_opts.get("local_dl_path")
                         / Path(str(uuid4()))
                         / Path(video_id)
                     )
@@ -82,19 +133,6 @@ class Downloader:
                 self.logger.error(f"Unable to make unique download dir @ '{str(p)}'")
                 raise
 
-    async def download(self, link: str, extra_opts: dict = {}):
-        if not isinstance(extra_opts, dict):
-            self.logger.error(f"Argument 'extra_opts' is not of instance 'dict'")
-            raise ValueError(f"Argument 'extra_opts' is not of instance 'dict'")
-
-        self.logger.debug(f"Fetching video info for {link}.")
-        video_info = await asyncio.to_thread(self._extract_info, link, extra_opts) # for later
-
-        dl_path = self._get_unq_dl_path(video_info.get("id"), dl_type="cold")
-        
-        self.logger.debug(f"Downloading video '{link}' to {str(dl_path)}")
-        rc = await asyncio.to_thread(self._download_video, link, ({"home": dl_path} | extra_opts))
-        
-
+    
 
 
