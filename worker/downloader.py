@@ -1,8 +1,3 @@
-import asyncio
-import redis
-import json
-import sys
-
 import logging
 logger = logging.getLogger(__name__)
 
@@ -37,11 +32,12 @@ class Downloader:
     }
 
     def __init__(
-            self, 
-            name: str, 
-            ytdlp_opts: dict = None, 
-            custom_logger: logging.Logger = None, 
-            downloader_opts: dict = dict()
+        self, 
+        name: str, 
+        dl_type: str = "local",
+        ytdlp_opts: dict = None, 
+        custom_logger: logging.Logger = None, 
+        downloader_opts: dict = dict(),
     ):
         self.name = name
         self.downloader_opts = (Downloader.DEFAULT_DOWNLOADER_OPTS | downloader_opts)
@@ -57,11 +53,13 @@ class Downloader:
             self.ytdlp_opts = YTDL_OPTS_BASE
         self.ytdlp_opts["logger"] = self.logger
 
-        if isinstance(downloader_opts, dict):
-            if downloader_opts.get("dl_type") in VALID_DOWNLOAD_LOCATION_TYPES:
-                self.dl_type = downloader_opts["dl_type"]
-            else:
-                self.dl_type = "local"
+        if dl_type in self.VALID_DOWNLOAD_LOCATION_TYPES:
+            self.dl_type = dl_type
+        else:
+            raise ValueError(
+                f"dl_type = '{dl_type}' not a valid type"
+                "in VALID_DOWNLOAD_LOCATION_TYPES"
+            )
 
 
         try:
@@ -122,13 +120,11 @@ class Downloader:
             err_code = ydl.download([link])
         return err_code
 
-    def _get_unique_dl_path(self, video_id: str, dl_type: str) -> Path:
+    def _get_unique_dl_path(self, video_id: str, dl_type: str = "local") -> Path:
         if dl_type == "tmp":
             raise NotImplementedError("'tmp' storage type is not yet implemented")
-            return None
         elif dl_type == "remote":
             raise NotImplementedError("'remote' storage type is not yet implemented")
-            return None
         elif dl_type == "local":
             p = (
                     self.downloader_opts.get("local_dl_path")
@@ -139,9 +135,9 @@ class Downloader:
 
     def _make_dl_path(self, dl_path: Path):
         try:
-            dl_path.mkdir(parents=True, exit_ok=False)
+            dl_path.mkdir(parents=True, exist_ok=False)
         except FileExistsError as e:
-            self.logger.error(f"Unable to make unique download dir @ '{str(p)}'")
+            self.logger.error(f"Unable to make unique download dir @ '{str(dl_path)}'")
             raise
 
     
