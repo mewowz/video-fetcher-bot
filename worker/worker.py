@@ -3,6 +3,7 @@ logger = logging.getLogger(__name__)
 
 import redis
 import orjson as json
+import threading
 
 from pathlib import Path
 
@@ -49,8 +50,20 @@ class Worker:
 
         self.logger.debug(f"Initialized Worker name: {self.name}")
 
-    def run(self):
-        raise NotImplementedError()
+    def run(self, stop: threading.Event):
+        self.logger.info(f"Running worker loop for {self.name}")
+        while not stop.is_set():
+            try:
+                self._handle_job()
+            except Exception as e:
+                self.logger.error(
+                    f"Worker {self.name} received unhandled "
+                    f"exception of type {type(e)}. Continuing..."
+                )
+                self.logger.debug(f"{self.name} Error: {e}")
+                continue
+
+        self.logger.info(f"Exiting worker loop for {self.name}")
 
     def _handle_job(self):
         job = self._get_job_from_queue()
