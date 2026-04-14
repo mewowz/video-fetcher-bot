@@ -45,7 +45,7 @@ class Downloader:
 
         if not isinstance(custom_logger, logging.Logger):
             self.logger = logger
-            self.logger.warn(
+            self.logger.warning(
                 "custom_logger was not passed an instance of logging.Logger. "
                 "Using default logger"
             )
@@ -76,7 +76,7 @@ class Downloader:
 
         self.logger.debug(f"Created Downloader '{self.name}'")
 
-    def download(self, link: str, extra_opts: dict = {}) -> list[int, str]:
+    def download(self, link: str, extra_opts: dict = {}) -> tuple[int, str]:
         if not isinstance(extra_opts, dict):
             self.logger.error(f"Argument 'extra_opts' is not of instance 'dict'")
             raise ValueError(f"Argument 'extra_opts' is not of instance 'dict'")
@@ -116,7 +116,7 @@ class Downloader:
         # TODO: Look into source for ytdlp's error codes. 
         # ytdlp has YoutubeDL.download() return an integer error code, but
         # I'm unsure exactly what those codes are nor what they mean
-        return [rc, str(download_path)]
+        return (rc, str(dl_path))
 
     def _extract_info(self, link: str, extra_opts: dict = {}) -> dict:
         with YoutubeDL(self.ytdlp_opts | extra_opts) as ydl:

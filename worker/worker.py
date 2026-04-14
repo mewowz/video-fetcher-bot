@@ -49,22 +49,22 @@ class Worker:
 
         self.logger.debug(f"Initialized Worker name: {self.name}")
 
-    def run():
+    def run(self):
         raise NotImplementedError()
 
-    def _handle_job():
+    def _handle_job(self):
         job = self._get_job_from_queue()
-        self.logger.info(f"Receieved job ID: {job.job_id}")
+        self.logger.info(f"Receieved job ID: {job['job_id']}")
 
         try:
-            self.logger.info(f"Downloading video {job.request.url} for job ID: {job.job_id}")
-            ec, dl_path = self.downloader.download(job.request.url)
+            self.logger.info(f"Downloading video {job['request']['url']} for job ID: {job['job_id']}")
+            ec, dl_path = self.downloader.download(job['request']['url'])
             self.logger.info(
-                f"Successfully downloaded video {job.request.url} to "
-                f"{dl_path} for job ID: {job.job_id}"
+                f"Successfully downloaded video {job['request']['url']} to "
+                f"{dl_path} for job ID: {job['job_id']}"
             )
         except Exception as e:
-            self.logger.error(f"Got error for job ID: {job.job_id} on download.")
+            self.logger.error(f"Got error for job ID: {job['job_id']} on download.")
             self.logger.debug(
                 "Error details:\n"
                 f"Exception: {e}.\n"
@@ -74,13 +74,13 @@ class Worker:
 
         try:
             self.logger.info(
-                f"Submitting finished download for video {job.request.url} "
-                f"job ID: {job.request.url}"
+                f"Submitting finished download for video {job['request']['url']} "
+                f"job ID: {job['job_id']}"
             )
             self._submit_finished_job(job, dl_path)
-            self.logger.info(f"Successfully submitted job ID: {job.job_id}")
+            self.logger.info(f"Successfully submitted job ID: {job['job_id']}")
         except Exception as e:
-            self.logger.error(f"Got error for job ID: {job.job_id} on submit.")
+            self.logger.error(f"Got error for job ID: {job['job_id']} on submit.")
             self.logger.debug(
                 "Error details:\n"
                 f"Exception: {e}.\n"
@@ -88,20 +88,20 @@ class Worker:
             )
             raise
 
-        self.logger.info(f"Successfully downloaded video {job.request.url} (Job ID: {job.job_id}")
+        self.logger.info(f"Successfully downloaded video {job['request']['url']} (Job ID: {job['job_id']})")
 
 
-    def _get_job_from_queue() -> dict:
+    def _get_job_from_queue(self) -> dict:
         _, job = self.redis.brpop(NEW_JOBS_QUEUE)
         job = json.loads(job)
         return job
     
-    def _submit_finished_job(job: dict, dl_path: str):
+    def _submit_finished_job(self, job: dict, dl_path: str):
         if not isinstance(dl_path, str):
             raise TypeError(f"dl_path must be of type 'str'. Got type '{type(dl_path)}'")
         job["status"] = "downloaded"
         job["download_path"] = dl_path
-        self.redis.lpush(DOWNLOADED_JOBS_QUEUE, orjson.dumps(job))
+        self.redis.lpush(DOWNLOADED_JOBS_QUEUE, json.dumps(job))
 
 
 
