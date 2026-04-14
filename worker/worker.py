@@ -16,6 +16,7 @@ class Worker:
         name: str,
         redis_conn: redis.Redis,
         *,
+        redis_timeout: int = 2,
         dl_type: str = "local",
         custom_logger: logging.Logger = None,
         downloader_logger: logging.Logger = None,
@@ -31,6 +32,11 @@ class Worker:
             raise ValueError("redis_conn must be of instance redis.Redis")
         else:
             self.redis = redis_conn
+
+        if isinstance(redis_timeout, int) and redis_timeout < 0:
+            self.redis_timeout = redis_timeout
+        else:
+            raise ValueError(f"redis_timeout must be of int and >= 0")
 
         if custom_logger != None and not isinstance(custom_logger, logging.Logger):
             raise ValueError(f"custom_logger must be of instance logging.Logger")
@@ -67,6 +73,9 @@ class Worker:
 
     def _handle_job(self):
         job = self._get_job_from_queue()
+        if job == None:
+            self.logger.debug(f"{self.name} got timeout. Restarting loop")
+            return
         self.logger.info(f"Receieved job ID: {job['job_id']}")
 
         try:
@@ -105,7 +114,9 @@ class Worker:
 
 
     def _get_job_from_queue(self) -> dict:
-        _, job = self.redis.brpop(NEW_JOBS_QUEUE)
+        _, job = self.redis.brpop(NEW_JOBS_QUEUE, self.redis_timeout)
+        if job == None:
+            return job
         job = json.loads(job)
         return job
     

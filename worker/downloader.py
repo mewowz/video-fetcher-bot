@@ -52,8 +52,8 @@ class Downloader:
         else:
             self.logger = custom_logger
 
-        if type(ytdlp_opts) != dict:
-            raise ValueError("ytdlp_opts must be of type dict")
+        if not isinstance(ytdlp_opts, dict):
+            raise ValueError("ytdlp_opts must be of instance dict")
         else:
             self.ytdlp_opts = (YTDL_OPTS_BASE | ytdlp_opts)
         self.ytdlp_opts["logger"] = self.logger
