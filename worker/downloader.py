@@ -34,8 +34,9 @@ class Downloader:
     def __init__(
         self, 
         name: str, 
+        *,
         dl_type: str = "local",
-        ytdlp_opts: dict = None, 
+        ytdlp_opts: dict = dict(), 
         custom_logger: logging.Logger = None, 
         downloader_opts: dict = dict(),
     ):
@@ -44,13 +45,17 @@ class Downloader:
 
         if not isinstance(custom_logger, logging.Logger):
             self.logger = logger
+            self.logger.warn(
+                "custom_logger was not passed an instance of logging.Logger. "
+                "Using default logger"
+            )
         else:
             self.logger = custom_logger
 
-        if isinstance(ytdlp_opts, dict):
-            self.ytdlp_opts = (YTDL_OPTS_BASE | ytdlp_opts)
+        if type(ytdlp_opts) != dict:
+            raise ValueError("ytdlp_opts must be of type dict")
         else:
-            self.ytdlp_opts = YTDL_OPTS_BASE
+            self.ytdlp_opts = (YTDL_OPTS_BASE | ytdlp_opts)
         self.ytdlp_opts["logger"] = self.logger
 
         if dl_type in self.VALID_DOWNLOAD_LOCATION_TYPES:
@@ -71,7 +76,7 @@ class Downloader:
 
         self.logger.debug(f"Created Downloader '{self.name}'")
 
-    def download(self, link: str, extra_opts: dict = {}):
+    def download(self, link: str, extra_opts: dict = {}) -> list[int, str]:
         if not isinstance(extra_opts, dict):
             self.logger.error(f"Argument 'extra_opts' is not of instance 'dict'")
             raise ValueError(f"Argument 'extra_opts' is not of instance 'dict'")
@@ -107,6 +112,11 @@ class Downloader:
         except Exception as e:
             self.logger.debug(f"Got unknown error: {e}.\nRe-raising exception")
             raise
+
+        # TODO: Look into source for ytdlp's error codes. 
+        # ytdlp has YoutubeDL.download() return an integer error code, but
+        # I'm unsure exactly what those codes are nor what they mean
+        return [rc, str(download_path)]
 
     def _extract_info(self, link: str, extra_opts: dict = {}) -> dict:
         with YoutubeDL(self.ytdlp_opts | extra_opts) as ydl:

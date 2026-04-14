@@ -19,6 +19,8 @@ from discord import app_commands
 # Move to ULID later
 import uuid
 
+from utils.config import NEW_JOBS_QUEUE
+
 
 URL_RE = re.compile(r"https?://\S+")
 
@@ -108,6 +110,7 @@ class DownloadVideoCog(commands.Cog):
             "status": "queued",
             "error": None,
             "result": None,
+            "download_path": None,
         }
 
         return payload
@@ -171,12 +174,12 @@ class DownloadVideoCog(commands.Cog):
         )
         
         self.logger.debug(
-                f"[dl] Pushing job to 'dlqueue' on valkey server "
+                f"[dl] Pushing job to '{NEW_JOBS_QUEUE}' on valkey server "
                 f"with payload {json.dumps(payload)}"
         )
 
         # Store job for workers to handle
-        await self.redis.lpush("dlqueue", json.dumps(payload))
+        await self.redis.lpush(NEW_JOBS_QUEUE, json.dumps(payload))
 
         self.logger.info("[dl] Successfully pushed job to queue. Returning")
 

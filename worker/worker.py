@@ -1,26 +1,107 @@
-import asyncio
-import redis
-
 import logging
 logger = logging.getLogger(__name__)
 
-from yt_dlp import YoutubeDL
+import redis
+import orjson as json
 
-YTDL_OPTS_BASE = {
-        "quiet": True,
-        "no_warnings": True,
-        "format": "mp4", # Keep this as the default
-        "check_formats": True, # Check all the formats to see if any of them are downloadable, at least
-        "format": "bv*+ba",
-        "restrictfilenames": True,
-        "noplaylist": True,
-        "final_ext": "mp4",
-        "fixup": "warn",
-        "noprogress": True,
-        "consoletitle": False,
+from pathlib import Path
+
+from worker.downloader import Downloader
+from utils.config import NEW_JOBS_QUEUE, DOWNLOADED_JOBS_QUEUE
+
+class Worker:
+    def __init__(
+        self,
+        name: str,
+        redis_conn: redis.Redis,
+        *,
+        dl_type: str = "local",
+        custom_logger: logging.Logger = None,
+        downloader_logger: logging.Logger = None,
+        downloader_opts: dict = dict(),
+        ytdlp_opts: dict = dict(),
+    ):
+        if type(name) != str:
+            raise ValueError("name must be of type str")
+        else:
+            self.name = name
+
+        if not isinstance(redis_conn, redis.Redis):
+            raise ValueError("redis_conn must be of instance redis.Redis")
+        else:
+            self.redis = redis_conn
+
+        if custom_logger != None and not isinstance(custom_logger, logging.Logger):
+            raise ValueError(f"custom_logger must be of instance logging.Logger")
+        else:
+            self.logger = custom_logger if isinstance(custom_logger, logging.Logger) else logger
+
+        self.dl_type = dl_type
+        self.downloader_opts = downloader_opts
+        self.ytdlp_opts = ytdlp_opts
+        self.downloader = Downloader(
+            name=self.name + "_downloader",
+            dl_type=self.dl_type,
+            ytdlp_opts=self.ytdlp_opts,
+            custom_logger=self.logger,
+            downloader_opts=self.downloader_opts,
+        )
+
+        self.logger.debug(f"Initialized Worker name: {self.name}")
+
+    def run():
+        raise NotImplementedError()
+
+    def _handle_job():
+        job = self._get_job_from_queue()
+        self.logger.info(f"Receieved job ID: {job.job_id}")
+
+        try:
+            self.logger.info(f"Downloading video {job.request.url} for job ID: {job.job_id}")
+            ec, dl_path = self.downloader.download(job.request.url)
+            self.logger.info(
+                f"Successfully downloaded video {job.request.url} to "
+                f"{dl_path} for job ID: {job.job_id}"
+            )
+        except Exception as e:
+            self.logger.error(f"Got error for job ID: {job.job_id} on download.")
+            self.logger.debug(
+                "Error details:\n"
+                f"Exception: {e}.\n"
+                f"Job: {job}"
+            )
+            raise
+
+        try:
+            self.logger.info(
+                f"Submitting finished download for video {job.request.url} "
+                f"job ID: {job.request.url}"
+            )
+            self._submit_finished_job(job, dl_path)
+            self.logger.info(f"Successfully submitted job ID: {job.job_id}")
+        except Exception as e:
+            self.logger.error(f"Got error for job ID: {job.job_id} on submit.")
+            self.logger.debug(
+                "Error details:\n"
+                f"Exception: {e}.\n"
+                f"Job: {job}"
+            )
+            raise
+
+        self.logger.info(f"Successfully downloaded video {job.request.url} (Job ID: {job.job_id}")
 
 
+    def _get_job_from_queue() -> dict:
+        _, job = self.redis.brpop(NEW_JOBS_QUEUE)
+        job = json.loads(job)
+        return job
+    
+    def _submit_finished_job(job: dict, dl_path: str):
+        if not isinstance(dl_path, str):
+            raise TypeError(f"dl_path must be of type 'str'. Got type '{type(dl_path)}'")
+        job["status"] = "downloaded"
+        job["download_path"] = dl_path
+        self.redis.lpush(DOWNLOADED_JOBS_QUEUE, orjson.dumps(job))
 
-}
 
 
