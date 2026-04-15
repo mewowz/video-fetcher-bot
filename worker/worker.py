@@ -16,6 +16,7 @@ class Worker:
         name: str,
         redis_conn: redis.Redis,
         *,
+        stop_event: threading.Event = None,
         redis_timeout: int = 2,
         dl_type: str = "local",
         custom_logger: logging.Logger = None,
@@ -23,8 +24,8 @@ class Worker:
         downloader_opts: dict = dict(),
         ytdlp_opts: dict = dict(),
     ):
-        if type(name) != str:
-            raise ValueError("name must be of type str")
+        if not isinstance(name, str):
+            raise ValueError("name must be of instance str")
         else:
             self.name = name
 
@@ -33,7 +34,12 @@ class Worker:
         else:
             self.redis = redis_conn
 
-        if isinstance(redis_timeout, int) and redis_timeout < 0:
+        if not isinstance(stop_event, threading.Event):
+            raise ValueError("stop_event must be of instance threading.Event")
+        else:
+            self._stop_event = stop_event
+
+        if isinstance(redis_timeout, int) and redis_timeout >= 0:
             self.redis_timeout = redis_timeout
         else:
             raise ValueError(f"redis_timeout must be of int and >= 0")
@@ -54,11 +60,15 @@ class Worker:
             downloader_opts=self.downloader_opts,
         )
 
+        self._startloop = threading.Event()
+
         self.logger.debug(f"Initialized Worker name: {self.name}")
 
-    def run(self, stop: threading.Event):
+    def run(self):
+        self.logger.info(f"Ready to run worker loop for {self.name}")
+        self._wait_startloop()
         self.logger.info(f"Running worker loop for {self.name}")
-        while not stop.is_set():
+        while not self._stop_event.is_set():
             try:
                 self._handle_job()
             except Exception as e:
@@ -71,11 +81,20 @@ class Worker:
 
         self.logger.info(f"Exiting worker loop for {self.name}")
 
+    def stop(self):
+        self._stop_event.set()
+
+    def start(self):
+        self._startloop.set()
+
+    def _wait_startloop(self):
+        return self._startloop.wait()
+
     def _handle_job(self):
         job = self._get_job_from_queue()
         if job == None:
             self.logger.debug(f"{self.name} got timeout. Restarting loop")
-            return
+            return 
         self.logger.info(f"Receieved job ID: {job['job_id']}")
 
         try:
@@ -114,9 +133,10 @@ class Worker:
 
 
     def _get_job_from_queue(self) -> dict:
-        _, job = self.redis.brpop(NEW_JOBS_QUEUE, self.redis_timeout)
-        if job == None:
-            return job
+        result = self.redis.brpop(NEW_JOBS_QUEUE, self.redis_timeout)
+        if result is None:
+            return None 
+        _, job = result
         job = json.loads(job)
         return job
     
