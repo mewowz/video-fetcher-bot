@@ -6,11 +6,16 @@ from uuid import uuid4
 from pathlib import Path
 from yt_dlp import YoutubeDL
 
+from utils.config import YTDL_OUTPUT_DIR
+
+LOCAL_DL_PATH = Path(YTDL_OUTPUT_DIR)
+
 YTDL_OPTS_BASE = {
         "quiet": True,
         "no_warnings": True,
         "format": "mp4", # Keep this as the default
-        "check_formats": True, # Check all the formats to see if any of them are downloadable, at least
+        # Commenting out check_formats for now as this adds a lot of extra time to each download
+        #"check_formats": True, # Check all the formats to see if any of them are downloadable, at least
         #"format": "bv*+ba",
         "restrictfilenames": True,
         "noplaylist": True,
@@ -22,7 +27,7 @@ YTDL_OPTS_BASE = {
  
 class Downloader:
     DEFAULT_DOWNLOADER_OPTS = {
-            "local_dl_path": Path.cwd() / Path("data") / Path("videos"),
+            "local_dl_path": LOCAL_DL_PATH,
     }
 
     VALID_DOWNLOAD_LOCATION_TYPES = {
@@ -107,7 +112,8 @@ class Downloader:
         
         try:
             self.logger.debug(f"Downloading video @ {link} to {str(dl_path)}")
-            rc = self._download_video(link, ({"home": dl_path} | extra_opts) )
+            outtmpl = {"outtmpl": str( dl_path / "%(id)s.%(ext)s") }
+            rc = self._download_video(link, ({"home": dl_path} | outtmpl | extra_opts) )
             self.logger.debug(f"Successfully downloaded video {link}")
         except Exception as e:
             self.logger.debug(f"Got unknown error: {e}.\nRe-raising exception")

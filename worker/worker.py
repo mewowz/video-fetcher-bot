@@ -74,7 +74,7 @@ class Worker:
             except Exception as e:
                 self.logger.error(
                     f"Worker {self.name} received unhandled "
-                    f"exception of type {type(e)}. Continuing..."
+                    f"exception of type {type(e)}. Exiting..."
                 )
                 self.logger.debug(f"{self.name} Error: {e}")
                 break
