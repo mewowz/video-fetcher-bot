@@ -50,6 +50,7 @@ class WorkerPool:
             workers.append(
                 (new_worker, fut,)
             )
+        self.debug(f"Initialized {n_workers} for {self.__class__.__name__}")
 
         return workers
 

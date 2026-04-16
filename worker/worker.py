@@ -62,7 +62,7 @@ class Worker:
 
         self._startloop = threading.Event()
 
-        self.logger.debug(f"Initialized Worker name: {self.name}")
+        self.logger.info(f"Initialized Worker name: {self.name}")
 
     def run(self):
         self.logger.info(f"Ready to run worker loop for {self.name}")
@@ -94,7 +94,6 @@ class Worker:
     def _handle_job(self):
         job = self._get_job_from_queue()
         if job == None:
-            self.logger.debug(f"{self.name} got timeout. Restarting loop")
             return 
         self.logger.info(f"Receieved job ID: {job['job_id']}")
 
@@ -129,9 +128,6 @@ class Worker:
                 f"Job: {job}"
             )
             raise
-
-        self.logger.info(f"Successfully downloaded video {job['request']['url']} (Job ID: {job['job_id']})")
-
 
     def _get_job_from_queue(self) -> dict:
         result = self.redis.brpop(NEW_JOBS_QUEUE, self.redis_timeout)

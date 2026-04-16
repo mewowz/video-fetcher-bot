@@ -96,7 +96,6 @@ class Downloader:
             raise
 
 
-        self.logger.debug(f"Obtaining unique download path for video {link} for dl_type={self.dl_type}")
         dl_path = self._get_unique_dl_path(video_info.get("id"), dl_type=self.dl_type)
         try:
             self._make_dl_path(dl_path)
@@ -153,7 +152,6 @@ class Downloader:
         try:
             dl_path.mkdir(parents=True, exist_ok=False)
         except FileExistsError as e:
-            self.logger.error(f"Unable to make unique download dir @ '{str(dl_path)}'")
             raise
 
     
