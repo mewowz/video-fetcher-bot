@@ -6,5 +6,5 @@ CPU_COUNT = os.cpu_count()
 
 REDIS_CONN_ARGS = {
     "host": "localhost",
-    "port": 6479,
+    "port": 6379,
 }

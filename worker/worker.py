@@ -77,11 +77,12 @@ class Worker:
                     f"exception of type {type(e)}. Continuing..."
                 )
                 self.logger.debug(f"{self.name} Error: {e}")
-                continue
+                break
 
         self.logger.info(f"Exiting worker loop for {self.name}")
 
     def stop(self):
+        self._startloop.clear()
         self._stop_event.set()
 
     def start(self):

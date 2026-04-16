@@ -53,3 +53,11 @@ class WorkerPool:
 
         return workers
 
+    def start_workers(self):
+        for w, fut in self._dl_workers:
+            w.start()
+
+    def stop_workers(self):
+        for w, fut in self._dl_workers:
+            w.stop()
+
