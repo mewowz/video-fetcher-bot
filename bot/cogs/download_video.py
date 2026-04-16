@@ -69,7 +69,6 @@ class DownloadVideoCog(commands.Cog):
 
     @staticmethod
     def _create_job_dict(
-        self,
         interaction: discord.Interaction,
         job_id: int,
         dl_request: DownloadRequest,
@@ -100,7 +99,7 @@ class DownloadVideoCog(commands.Cog):
                 "guild_id": interaction.guild_id,
                 "requester_id": interaction.user.id,
                 "request_message_id": interaction.message.id,
-                "webook_url": interaction.followup.webook.url
+                "webhook_url": interaction.followup.url
             },
             "policy": {
                 "discord_max_size_bytes": policy.max_size_bytes,
@@ -117,7 +116,7 @@ class DownloadVideoCog(commands.Cog):
 
     @staticmethod
     def _is_in_dms():
-        def predicate(self, interaction: discord.Interaction) -> bool:
+        def predicate(interaction: discord.Interaction) -> bool:
             return isinstance(interaction.channel, discord.DMChannel)
         return app_commands.check(predicate)
 
@@ -147,9 +146,6 @@ class DownloadVideoCog(commands.Cog):
         self.logger.info(
                 f"Receieved request from {interaction.user.id} "
                 f"to download video {url}"
-        )
-        self.logger.debug(
-                f"[dl] receieved args {json.dumps(locals())}"
         )
 
         vu = self._valid_url(url)
@@ -186,21 +182,23 @@ class DownloadVideoCog(commands.Cog):
 
     @dl.error
     async def dl_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
-        self.logger.error(f"[dl] Receieved error for interaction {interaction.id}: {error}")
+        self.logger.error(f"Receieved error for interaction {interaction.id}: {error}")
         if isinstance(error, app_commands.CommandOnCooldown):
             await interaction.response.send_message(f"Slow down a bit — try again in {error.retry_after:.1f} seconds.")
-        elif isinstance(error, discord.HTTPException):
-            self._handle_http_err(error)
+        # TODO: implement later. I'm not exactly sure what to do with this 
+        # at the moment and I'd rather not lob in something for the sake of it
+        #elif isinstance(error, discord.HTTPException):
+        #    self._handle_http_err(error)
         elif isinstance(error, discord.InteractionResponded):
             self.logger.error(
-                "[dl] Ignoring already responded interaction with "
+                "Ignoring already responded interaction with "
                 f"interaction ID {interaction.id}"
             )
-            return
         else:
             await interaction.response.send_message("Something went wrong enqueuing that request.")
-            self.logger.error(f"[dl] Unhandled error for interaction {interaction.id}")
+            self.logger.error(f"Unhandled error for interaction {interaction.id}")
             raise error  
+
 
 
 async def setup(bot: commands.Bot, custom_logger: logging.Logger = None):
