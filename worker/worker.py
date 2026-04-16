@@ -100,6 +100,9 @@ class Worker:
         try:
             self.logger.info(f"Downloading video {job['request']['url']} for job ID: {job['job_id']}")
             ec, dl_path = self.downloader.download(job['request']['url'])
+            if ec != 0:
+                self.logger.info(f"Failed to download {job['request']['url']}")
+                return
             self.logger.info(
                 f"Successfully downloaded video {job['request']['url']} to "
                 f"{dl_path} for job ID: {job['job_id']}"

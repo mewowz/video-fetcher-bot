@@ -5,6 +5,12 @@ from urllib.parse import urlparse
 from uuid import uuid4
 from pathlib import Path
 from yt_dlp import YoutubeDL
+from yt_dlp.utils import (
+    DownloadError, 
+    UnavailableVideoError,
+    UnsupportedError,
+    GeoRestrictedError,
+)
 
 from utils.config import YTDL_OUTPUT_DIR
 
@@ -91,8 +97,16 @@ class Downloader:
             self.logger.debug(f"Fetching video info for {link}.")
             video_info = self._extract_info(link, extra_opts) # for later
             self.logger.debug(f"Successfuly obtained video info for {link}")
+        except UnsupportedError as e:
+            self.logger.error(f"The provided url, {link}, is unsupported by any yt-dlp extractor")
+            self.logger.debug(f"Error: {e}")
+            return (-1, "")
+        except GeoRestrictedError as e:
+            self.logger.error(f"Unable to download {link} due to geo-restrictions")
+            self.logger.debug(f"Error: {e}")
+            return (-1, "")
         except Exception as e:
-            self.logger.debug(f"Got unknown error: {e}.\nRe-raising exception")
+            self.logger.error(f"Got unknown error: {e}.\nRe-raising exception")
             raise
 
 
@@ -114,6 +128,14 @@ class Downloader:
             outtmpl = {"outtmpl": str( dl_path / "%(id)s.%(ext)s") }
             rc = self._download_video(link, ({"home": dl_path} | outtmpl | extra_opts) )
             self.logger.debug(f"Successfully downloaded video {link}")
+        except DownloadError as e:
+            self.logger.error(f"Failed to download {link}: Caught DownloadError.")
+            self.logger.debug(f"Error: {e}")
+            return (-1, "")
+        except UnavailableVideoError as e:
+            self.logger.error(f"Failed to download {link}: Video unavailable")
+            self.logger.debug(f"Error: {e}")
+            return (-1, "")
         except Exception as e:
             self.logger.debug(f"Got unknown error: {e}.\nRe-raising exception")
             raise
