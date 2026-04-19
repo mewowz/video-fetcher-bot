@@ -149,14 +149,14 @@ class DownloadVideoCog(commands.Cog):
         )
 
         vu = self._valid_url(url)
-        self.logger.debug(f"[dl] self._valid_url(url = {url}) = {vu}")
+        self.logger.debug(f"self._valid_url(url = {url}) = {vu}")
         if vu is False:
-            self.logger.debug(f"[dl] Reporting URL validity and returning")
+            self.logger.debug(f"Reporting URL validity and returning")
             return await interaction.response.send_message("That URL is invalid.")
 
-        self.logger.debug(f"[dl] Deferring with thinking=True")
+        self.logger.debug(f"Deferring with thinking=True")
         await interaction.response.defer(thinking=True)
-        self.logger.debug(f"[dl] Defer successful")
+        self.logger.debug(f"Defer successful")
 
         job_id = uuid.uuid4().hex  # replace w/ ULID later
 
