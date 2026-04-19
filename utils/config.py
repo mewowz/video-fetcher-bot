@@ -10,3 +10,6 @@ REDIS_CONN_ARGS = {
     "host": "localhost",
     "port": 6379,
 }
+
+MAX_UPLOAD_WORKERS = CPU_COUNT * 4
+CONTENT_SERVER_BASE_URL = "http://localhost"
