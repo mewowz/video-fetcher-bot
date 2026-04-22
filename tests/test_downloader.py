@@ -4,7 +4,7 @@ import worker.downloader as dler
 import pytest
 
 
-def local_downloader(name="local_downloader", dl_type="local", ytdlp_opts=None, downloader_opts={}):
+def local_downloader(name="local_downloader", dl_type="local", ytdlp_opts={}, downloader_opts={}):
     return dler.Downloader(name, dl_type=dl_type, ytdlp_opts=ytdlp_opts, downloader_opts=downloader_opts)
 
 def test_downloader_get_unique_dl_path(monkeypatch):
@@ -15,7 +15,7 @@ def test_downloader_get_unique_dl_path(monkeypatch):
 
     video_id = "ABC12"
     expected_ret = ( 
-            Path.cwd() / Path("data") / Path("videos") / 
+            Path("data") / Path("videos") / 
             Path(uuid4_out) / Path(video_id)
     )
 
