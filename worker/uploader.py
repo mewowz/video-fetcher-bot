@@ -14,69 +14,91 @@ from utils.config import (
     CONTENT_SERVER_BASE_URL,
     DOWNLOADED_JOBS_QUEUE,
     REDIS_CONN_ARGS,
-);
+)
     
 SENTINEL_OBJ = None
 
 class UploaderPool:
-
-    async def run(self):
-        async with asyncio.TaskGroup() as tg:
-            async with redis.Redis(**REDIS_CONN_ARGS) as redis_aclient:
-                job_getter = tg.create_task(
-                    get_jobs(
-                        job_queue,
-                        redis_aclient,
-                        stop_event
-                    )
-                )
-                upload_workers = [
-                    tg.create_task(
-                        upload_worker(
-                            f"upload_worker_{i}",
-                            http_client,
-                            job_queue,
-                        )
-                    ) for i in range(MAX_UPLOAD_WORKERS)
-                ]
-                logger.info(f"Created {MAX_UPLOAD_WORKERS} workers")
-
-        logger.info("TaskGroup has exited. Quitting...")
-
-
-
     def __init__(
         self,
         max_upload_workers: int = MAX_UPLOAD_WORKERS,
         max_upload_jobs: int = MAX_UPLOAD_JOBS,
         redis_conn_args: dict = REDIS_CONN_ARGS,
-        redis_timeout: float = 2.0
+        redis_timeout: float = 2.0,
+        custom_logger: logging.Logger = None
     ):
-        self.job_queue = asyncio.Queue(maxsize=max_upload_jobs)
-        self.stop_event = asyncio.Event()
-        self.http_aclient = httpx.AsyncClient()
-        self.redis_aclient = redis.Redis(**redis_conn_args)
-        self.redis_timeout = redis_timeout
+        self._max_upload_workers = max_upload_workers
+        self._job_queue = asyncio.Queue(maxsize=max_upload_jobs)
+        self._http_aclient = httpx.AsyncClient()
+        self._redis_aclient = redis.Redis(**redis_conn_args)
+        self._redis_timeout = redis_timeout
 
-        self.job_getter = 
-    
+        if custom_logger != None and not isinstance(custom_logger, logging.Logger):
+            raise ValueError(f"custom_logger must be of instance logging.Logger")
+        else:
+            self.logger = custom_logger if isinstance(custom_logger, logging.Logger) else logger
 
-    def _destroy_all(self):
-        self.destroy_jobgetter()
-        for _ in range(max_upload_workers):
+        self._job_getter = UploadJobGetter(
+            self._job_queue,
+            self._redis_aclient,
+            self._redis_timeout,
+            self.logger,
+        )
+
+        self._upload_workers = [
+            Uploader(
+                f"uploader_{i}",
+                self._job_queue,
+                self._http_aclient,
+                self.logger,
+            ) for i in range(self._max_upload_workers)
+        ]
+
+        self._workers = []
+        self._init_workers()
+
+        self.logger.info("Initialized UploaderPool")
+
+    def _init_workers(self):
+        self._workers = [self._job_getter] + self._upload_workers
+
+    async def start_workers(self):
+        self.logger.debug("Starting all workers...")
+        await self._start_workers()
+        self.logger.debug("Successfully started all workers")
+
+    async def _start_workers(self):
+        for worker in self._workers:
+            worker_task = asyncio.create_task(worker.run())
+            worker.set_task(worker_task)
+            worker.start()
+
+    async def stop_workers(self):
+        self.logger.debug("Stopping all workers...")
+        await self._stop_workers()
+        self.logger.debug("Successfully stopped all workers")
+
+    async def _stop_workers(self):
+        await self._stop_all()
+
+    await def _stop_all(self):
+        self._stop_jobgetter()
+        for _ in range(self._max_upload_workers):
             try:
-                self.destroy_uploader()
+                self._stop_uploader()
             except Exception as e:
                 raise
+        tasks = [w.get_task() for w in self._workers]
+        self.logger.debug("Waiting for {len(tasks)} to finish...")
+        await asyncio.gather(*tasks, return_exceptions=True)
 
+    def _stop_jobgetter(self):
+        self._job_getter.stop()
 
-    def destroy_jobgetter(self):
-        self.job_getter.stop()
-
-    def destroy_uploader(self):
+    def _stop_uploader(self):
         try:
-            self.job_queue.put_nowait(SENTINEL_OBJ)
-        except QueueFull:
+            self._job_queue.put_nowait(SENTINEL_OBJ)
+        except asyncio.QueueFull:
             # TODO: handle the case when the queue is full but we need to destroy a worker
             raise
             
@@ -101,6 +123,8 @@ class UploadJobGetter:
         self.start_event = asyncio.Event()
         self.stop_event = asyncio.Event()
 
+        self._task = None
+
         self.logger.debug("Created 1 UploadJobGetter")
 
     async def run(self):
@@ -122,10 +146,22 @@ class UploadJobGetter:
         self.logger.debug("JobGetter exiting...")
 
     def start(self):
+        self._start()
+    
+    def _start(self):
         self.start_event.set()
 
     def stop(self):
+        self._stop()
+
+    def _stop(self):
         self.stop_event.set()
+
+    def set_task(self, task: asyncio.Task):
+        self._task = task
+
+    def get_task(self) -> asyncio.Task:
+        return self._task
 
     
 class Uploader:
@@ -147,10 +183,12 @@ class Uploader:
 
         self.start_event = asyncio.Event()
 
+        self._task = None
+
         self.logger.debug(f"Created uploader '{name}'")
 
 
-    async def run(self, name: str):
+    async def run(self):
         self.logger.debug(f"Uploader '{self.name}' waiting to start")
         await self.start_event.wait()
         self.start_event.clear()
@@ -158,29 +196,30 @@ class Uploader:
         while True:
             job = await self.job_queue.get()
             if job == SENTINEL_OBJ:
-                self.logger.info(f"Worker {name} exiting")
+                self.logger.info(f"Worker {self.name} exiting")
                 break
-            self.logger.debug(f"Worker {name} got job ID {job['job_id']}")
+            self.logger.debug(f"Worker {self.name} got job ID {job['job_id']}")
 
             try:
-                await self._handle_job(job)
+                status_code = await self._handle_job(job)
             except Exception as e:
                 self.logger.debug(f"Got unhandled exception: {e}")
                 continue
 
             self.logger.debug(
-                f"Status: {status}. "
+                f"Status: {status_code}. "
                 f"Successfully submitted job {job['job_id']}"
             )
 
-    async def _handle_job(self, job):
+    async def _handle_job(self, job) -> int:
         payload = self.get_payload(job)
 
         try:
-            status = await self._send_followup(
+            status_code = await self._send_followup(
                 job['reply']['webhook_url'],
                 payload
             )
+            return status_code
         except Exception as e:
             raise
      
@@ -234,9 +273,16 @@ class Uploader:
         return resp.status_code
 
     def start(self):
+        self._start()
+
+    def _start(self):
         self.start_event.set()
        
-        
+    def set_task(self, task: asyncio.Task):
+        self._task = task
+
+    def get_task(self) -> asyncio.Task:
+        return self._task
 
 
 
