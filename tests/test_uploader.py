@@ -31,7 +31,7 @@ def test_uploader_send_followup(monkeypatch):
 
     monkeypatch.setattr(asyncio, "sleep", AsyncMock())
     transport_429 = httpx.MockTransport(
-        lambda r: httpx.Response(429)
+        lambda r: httpx.Response(429, json={"retry_after": 5})
     )
     expected_ret = 429
     uploader.http_aclient = httpx.AsyncClient(transport=transport_429)

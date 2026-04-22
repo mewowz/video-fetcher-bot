@@ -261,8 +261,14 @@ class Uploader:
             if resp.status_code != 200:
                 logger.debug(f"Error while sending payload to {url}. ")
                 if resp.status_code == 429:
-                    wait_time = 2**tries
+                    # Discord actually gives a retry_after field in the JSON response
+                    # if you're ever 429'd
+                    wait_time = resp.json()["retry_after"]
                     logger.debug(f"Retrying in {wait_time} seconds")
+                    # In a later implementation, we should probably just handle this by 
+                    # defering them and re-adding them to the queue unless the queue 
+                    # is empty or adding a field in the job schema to signal if its worth 
+                    # adding to the queue at all.
                     await asyncio.sleep(wait_time)
                     continue
             else:
