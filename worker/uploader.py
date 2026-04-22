@@ -81,7 +81,7 @@ class UploaderPool:
     async def _stop_workers(self):
         await self._stop_all()
 
-    await def _stop_all(self):
+    async def _stop_all(self):
         self._stop_jobgetter()
         for _ in range(self._max_upload_workers):
             try:
