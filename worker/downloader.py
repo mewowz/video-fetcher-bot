@@ -19,7 +19,7 @@ LOCAL_DL_PATH = Path(YTDL_OUTPUT_DIR)
 YTDL_OPTS_BASE = {
         "quiet": True,
         "no_warnings": True,
-        "format": "mp4", # Keep this as the default
+        "format": "best[ext=mp4]", # Keep this as the default
         # Commenting out check_formats for now as this adds a lot of extra time to each download
         #"check_formats": True, # Check all the formats to see if any of them are downloadable, at least
         #"format": "bv*+ba",
