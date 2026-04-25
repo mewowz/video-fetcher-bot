@@ -9,6 +9,7 @@ from urllib.parse import quote
 def local_downloader(name="local_downloader", dl_type="local", ytdlp_opts={}, downloader_opts={}):
     return Downloader(name, dl_type=dl_type, ytdlp_opts=ytdlp_opts, downloader_opts=downloader_opts)
 
+@pytest.mark.unit
 def test_downloader_get_unique_dl_path(monkeypatch):
     downloader = local_downloader()
 
@@ -32,7 +33,7 @@ def test_downloader_get_unique_dl_path(monkeypatch):
         got = downloader._get_unique_dl_path(video_id, "tmp")
 
 
-
+@pytest.mark.unit
 def test_downloader_make_dl_path(tmp_path):
     downloader = local_downloader()
 
@@ -45,6 +46,7 @@ def test_downloader_make_dl_path(tmp_path):
     with pytest.raises(FileExistsError) as got_exception:
         got = downloader._make_dl_path(exists_path)
 
+@pytest.mark.unit
 def test_downloader_estimate_mp4_size():
     downloader = local_downloader()
     fake_info_dict = {
@@ -80,6 +82,7 @@ def test_downloader_estimate_mp4_size():
     got = downloader._estimate_mp4_size(fake_info_dict)
     assert got == expected
 
+@pytest.mark.unit
 def test_video_size_ok(monkeypatch):
     downloader = local_downloader()
 

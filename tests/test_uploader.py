@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 from worker.uploader import UploaderPool, UploadJobGetter, Uploader
 from utils.config import CONTENT_SERVER_BASE_URL
 
+@pytest.mark.unit
 def test_uploader_get_payload():
     example_path = "./some/relative/path.mp4"
     expected = {
@@ -15,6 +16,7 @@ def test_uploader_get_payload():
     got = uploader.get_payload({"download_path":example_path})
     assert got == expected
 
+@pytest.mark.unit
 def test_uploader_send_followup(monkeypatch):
     uploader = Uploader(None, None, None)
     fake_url = "https://localhost.com"
