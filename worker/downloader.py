@@ -2,7 +2,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from enum import StrEnum
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote
 from uuid import uuid4
 from pathlib import Path
 from yt_dlp import YoutubeDL
@@ -192,7 +192,7 @@ class Downloader:
         except FileExistsError as e:
             raise
 
-    def _can_download(self, video_info: dict) -> tuple[bool, DOWNLOAD_ERROR]:
+    def _can_download(self, video_info: dict) -> tuple[bool, DOWNLOAD_ERROR | None]:
         ok, reason = self._video_size_ok(video_info)
         if ok is False:
             return False, reason
@@ -208,24 +208,23 @@ class Downloader:
         filesize = format_info.get("filesize") or format_info.get("filesize_approx")
         if filesize is not None:
             if filesize > MAX_DOWNLOAD_FILESIZE_BYTES:
-                return (False, DOWNLOAD_ERROR.FILESIZE_TOO_BIG)
+                return (False, self.DOWNLOAD_ERROR.FILESIZE_TOO_BIG)
             else:
                 return (True, None)
         
         if format_info["ext"] == "mp4":
             filesize = self._estimate_mp4_size(video_info)
             if filesize == 0:
-                return (False, DOWNLOAD_ERROR.CANNOT_DET_FILESIZE)
+                return (False, self.DOWNLOAD_ERROR.CANNOT_DET_FILESIZE)
             elif filesize > MAX_DOWNLOAD_FILESIZE_BYTES:
-                return (False, DOWNLOAD_ERROR.FILESIZE_TOO_BIG)
+                return (False, self.DOWNLOAD_ERROR.FILESIZE_TOO_BIG)
             else:
                 return (True, None)
 
-        return (False, DOWNLOAD_ERROR.CANNOT_DET_FILESIZE)
+        return (False, self.DOWNLOAD_ERROR.CANNOT_DET_FILESIZE)
 
 
     def _estimate_mp4_size(self, video_info:dict) -> int:
-        selected_fmt = next(fmt for fmt in video_info["formats"] if fmt["format_id"] == video_info["format_id"])
         url = video_info["url"]
         def get_clen(key):
             marker = f"/{key}/"
