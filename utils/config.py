@@ -1,3 +1,6 @@
+LOG_DIR = "./logs"
+LOGFILE_NAME = "bot.log"
+
 NEW_JOBS_QUEUE = "dlqueue"
 DOWNLOADED_JOBS_QUEUE = "finishedqueue"
 
