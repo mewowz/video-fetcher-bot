@@ -1,6 +1,7 @@
 import logging
 logger = logging.getLogger(__name__)
 
+from enum import StrEnum
 from urllib.parse import urlparse
 from uuid import uuid4
 from pathlib import Path
@@ -12,7 +13,7 @@ from yt_dlp.utils import (
     GeoRestrictedError,
 )
 
-from utils.config import YTDL_OUTPUT_DIR
+from utils.config import YTDL_OUTPUT_DIR, MAX_DOWNLOAD_FILESIZE_BYTES
 
 LOCAL_DL_PATH = Path(YTDL_OUTPUT_DIR)
 
@@ -41,6 +42,16 @@ class Downloader:
         "tmp",
         "remote",
     }
+    
+    class DOWNLOAD_ERROR(StrEnum):
+        NONE                = "No error"
+        FILESIZE_TOO_BIG    = "Filesize is too large"
+        CANNOT_DET_FILESIZE = "Cannot determine filesize"
+        UNSUPPORTED_URL     = "The supplied download URL is unsupported by the downloader"
+        GEO_RESTRICTED      = "The video is Geo-Restricted from downloading via this downloader's IP"
+        AGE_RESTRICTED      = "The video is age-restricted and currently unable to be downloaded"
+        LIVE_VIDEO          = "The video points to a livestream which is currently running"
+        NO_FORMAT_ID        = "The extractor did not choose a format ID"
 
     def __init__(
         self, 
@@ -109,6 +120,11 @@ class Downloader:
             self.logger.error(f"Got unknown error: {e}.\nRe-raising exception")
             raise
 
+        can_download, reason = self._can_download(video_info)
+        if not can_download:
+            self.logger.error(f"Cannot download '{link}'. Reason: {reason}")
+            return (1, "")
+
 
         dl_path = self._get_unique_dl_path(video_info.get("id"), dl_type=self.dl_type)
         try:
@@ -176,6 +192,48 @@ class Downloader:
         except FileExistsError as e:
             raise
 
-    
+    def _can_download(self, video_info: dict) -> tuple[bool, DOWNLOAD_ERROR]:
+        ok, reason = self._video_size_ok(video_info)
+        if ok is False:
+            return False, reason
+        return True, None
+
+    def _video_size_ok(self, video_info: dict) -> tuple[bool, DOWNLOAD_ERROR]:
+        selected_format_id = video_info["format_id"]
+        format_info = next(
+            fmt 
+            for fmt in video_info["formats"]
+            if fmt["format_id"] == selected_format_id
+        )
+        filesize = format_info.get("filesize") or format_info.get("filesize_approx")
+        if filesize is not None:
+            if filesize > MAX_DOWNLOAD_FILESIZE_BYTES:
+                return (False, DOWNLOAD_ERROR.FILESIZE_TOO_BIG)
+            else:
+                return (True, None)
+        
+        if format_info["ext"] == "mp4":
+            filesize = self._estimate_mp4_size(video_info)
+            if filesize == 0:
+                return (False, DOWNLOAD_ERROR.CANNOT_DET_FILESIZE)
+            elif filesize > MAX_DOWNLOAD_FILESIZE_BYTES:
+                return (False, DOWNLOAD_ERROR.FILESIZE_TOO_BIG)
+            else:
+                return (True, None)
+
+        return (False, DOWNLOAD_ERROR.CANNOT_DET_FILESIZE)
 
 
+    def _estimate_mp4_size(self, video_info:dict) -> int:
+        selected_fmt = next(fmt for fmt in video_info["formats"] if fmt["format_id"] == video_info["format_id"])
+        url = video_info["url"]
+        def get_clen(key):
+            marker = f"/{key}/"
+            if marker not in url:
+                return 0
+            segment = unquote(url.split(marker)[1].split("/")[0])
+            for part in segment.split(";"):
+                if part.startswith("clen="):
+                    return int(part.split("clen=")[1])
+            return 0
+        return get_clen("sgoap") + get_clen("sgovp")

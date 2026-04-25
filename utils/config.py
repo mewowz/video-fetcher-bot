@@ -15,3 +15,6 @@ MAX_UPLOAD_WORKERS = CPU_COUNT * 4
 MAX_UPLOAD_JOBS = 100
 MAX_UPLOAD_RETRIES = 3
 CONTENT_SERVER_BASE_URL = "http://localhost"
+
+# 100MB in binary format - adjust accordingly
+MAX_DOWNLOAD_FILESIZE_BYTES = 100 * (1024**2) 
