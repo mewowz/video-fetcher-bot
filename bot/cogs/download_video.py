@@ -98,7 +98,7 @@ class DownloadVideoCog(commands.Cog):
                 "channel_id": interaction.channel.id,
                 "guild_id": interaction.guild_id,
                 "requester_id": interaction.user.id,
-                "request_message_id": interaction.message.id,
+                "request_message_id": interaction.id,
                 "webhook_url": interaction.followup.url
             },
             "policy": {
@@ -192,7 +192,7 @@ class DownloadVideoCog(commands.Cog):
     async def dl_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         self.logger.error(f"Receieved error for interaction {interaction.id}: {error}")
         if isinstance(error, app_commands.CommandOnCooldown):
-            await interaction.response.send_message(f"Slow down a bit — try again in {error.retry_after:.1f} seconds.")
+            await interaction.response.send(f"Slow down a bit — try again in {error.retry_after:.1f} seconds.")
         # TODO: implement later. I'm not exactly sure what to do with this 
         # at the moment and I'd rather not lob in something for the sake of it
         #elif isinstance(error, discord.HTTPException):
@@ -203,7 +203,7 @@ class DownloadVideoCog(commands.Cog):
                 f"interaction ID {interaction.id}"
             )
         else:
-            await interaction.response.send_message("Something went wrong enqueuing that request.")
+            await interaction.response.send("Something went wrong enqueuing that request.")
             self.logger.error(f"Unhandled error for interaction {interaction.id}")
             raise error  
 

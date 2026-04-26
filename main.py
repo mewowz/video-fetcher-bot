@@ -22,7 +22,7 @@ def setup_logger():
 
     fmt = logging.Formatter("[%(asctime)s] [%(name)s.%(funcName)s] %(levelname)s: %(message)s",)
 
-    file_handler = logging.FileHandler(LOG_DIR / LOGFILE_NAME)
+    file_handler = logging.FileHandler(Path(LOG_DIR) / Path(LOGFILE_NAME))
     file_handler.setFormatter(fmt)
     file_handler.setLevel(logging.DEBUG)
 
