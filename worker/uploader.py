@@ -5,6 +5,7 @@ import httpx
 import asyncio
 import os
 import redis.asyncio as redis
+import orjson as json
 from urllib.parse import urljoin
 
 from utils.config import (
@@ -139,6 +140,7 @@ class UploadJobGetter:
                 continue
 
             _, job = result
+            job = json.loads(job)
             await self.job_queue.put(job)
             self.logger.debug("Pushed 1 job to the queue")
         
