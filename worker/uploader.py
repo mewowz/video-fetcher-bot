@@ -6,6 +6,7 @@ import asyncio
 import os
 import redis.asyncio as redis
 import orjson as json
+import yarl
 from urllib.parse import urljoin
 
 from utils.config import (
@@ -13,6 +14,8 @@ from utils.config import (
     MAX_UPLOAD_JOBS,
     MAX_UPLOAD_RETRIES,
     CONTENT_SERVER_BASE_URL,
+    CONTENT_SERVER_PORT,
+    CONTENT_SERVER_BASE_PATH,
     DOWNLOADED_JOBS_QUEUE,
     REDIS_CONN_ARGS,
 )
@@ -228,9 +231,11 @@ class Uploader:
 
     def get_payload(self, job: dict) -> dict:
         payload = {
-            "content": urljoin(
-                CONTENT_SERVER_BASE_URL,
-                job['download_path']
+            "content": str(
+                yarl.URL(CONTENT_SERVER_BASE_URL + ":" + CONTENT_SERVER_PORT)
+                / CONTENT_SERVER_BASE_PATH
+                / job["unique_path_uuid"]
+                / (job["filename"])
             ),
         }
         return payload

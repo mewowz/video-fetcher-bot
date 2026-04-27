@@ -7,7 +7,7 @@ import threading
 
 from pathlib import Path
 
-from worker.downloader import Downloader
+from worker.downloader import Downloader, DownloadResult
 from utils.config import NEW_JOBS_QUEUE, DOWNLOADED_JOBS_QUEUE
 
 class Worker:
@@ -99,13 +99,13 @@ class Worker:
 
         try:
             self.logger.info(f"Downloading video {job['request']['url']} for job ID: {job['job_id']}")
-            ec, dl_path = self.downloader.download(job['request']['url'])
+            ec, result = self.downloader.download(job['request']['url'])
             if ec != 0:
                 self.logger.info(f"Failed to download {job['request']['url']}")
                 return
             self.logger.info(
                 f"Successfully downloaded video {job['request']['url']} to "
-                f"{dl_path} for job ID: {job['job_id']}"
+                f"{result.dl_path + '/' + result.filename} for job ID: {job['job_id']}"
             )
         except Exception as e:
             self.logger.error(f"Got error for job ID: {job['job_id']} on download.")
@@ -121,7 +121,7 @@ class Worker:
                 f"Submitting finished download for video {job['request']['url']} "
                 f"job ID: {job['job_id']}"
             )
-            self._submit_finished_job(job, dl_path)
+            self._submit_finished_job(job, result)
             self.logger.info(f"Successfully submitted job ID: {job['job_id']}")
         except Exception as e:
             self.logger.error(f"Got error for job ID: {job['job_id']} on submit.")
@@ -140,11 +140,16 @@ class Worker:
         job = json.loads(job)
         return job
     
-    def _submit_finished_job(self, job: dict, dl_path: str):
-        if not isinstance(dl_path, str):
-            raise TypeError(f"dl_path must be of type 'str'. Got type '{type(dl_path)}'")
+    def _submit_finished_job(self, job: dict, result: DownloadResult):
+        if not isinstance(result, DownloadResult):
+            raise TypeError(f"dl_path must be of type 'DownloadResult'. Got type '{type(result)}'")
         job["status"] = "downloaded"
-        job["download_path"] = dl_path
+
+        job["download_path"] = result.dl_path
+        job["unique_path_uuid"] = result.unique_path_uuid
+        job["video_id"] = result.video_id
+        job["filename"] = result.filename
+        
         self.redis.lpush(DOWNLOADED_JOBS_QUEUE, json.dumps(job))
 
 

@@ -1,6 +1,7 @@
 import logging
 logger = logging.getLogger(__name__)
 
+from dataclasses import dataclass
 from enum import StrEnum
 from urllib.parse import urlparse, unquote
 from uuid import uuid4
@@ -31,6 +32,14 @@ YTDL_OPTS_BASE = {
         "noprogress": True,
         "consoletitle": False,
 }
+
+@dataclass
+class DownloadResult:
+    unique_path_uuid:   str = ""
+    dl_path:            str = ""
+    video_id:           str = ""
+    filename:           str = ""
+
  
 class Downloader:
     DEFAULT_DOWNLOADER_OPTS = {
@@ -98,7 +107,8 @@ class Downloader:
 
         self.logger.debug(f"Created Downloader '{self.name}'")
 
-    def download(self, link: str, extra_opts: dict = {}) -> tuple[int, str]:
+    def download(self, link: str, extra_opts: dict = {}) -> tuple[int, DownloadResult]:
+        result = DownloadResult()
         if not isinstance(extra_opts, dict):
             self.logger.error(f"Argument 'extra_opts' is not of instance 'dict'")
             raise ValueError(f"Argument 'extra_opts' is not of instance 'dict'")
@@ -111,11 +121,11 @@ class Downloader:
         except UnsupportedError as e:
             self.logger.error(f"The provided url, {link}, is unsupported by any yt-dlp extractor")
             self.logger.debug(f"Error: {e}")
-            return (-1, "")
+            return (-1, result)
         except GeoRestrictedError as e:
             self.logger.error(f"Unable to download {link} due to geo-restrictions")
             self.logger.debug(f"Error: {e}")
-            return (-1, "")
+            return (-1, result)
         except Exception as e:
             self.logger.error(f"Got unknown error: {e}.\nRe-raising exception")
             raise
@@ -123,10 +133,10 @@ class Downloader:
         can_download, reason = self._can_download(video_info)
         if not can_download:
             self.logger.error(f"Cannot download '{link}'. Reason: {reason}")
-            return (1, "")
+            return (1, result)
 
 
-        dl_path = self._get_unique_dl_path(video_info.get("id"), dl_type=self.dl_type)
+        dl_path = self._get_unique_dl_path(dl_type=self.dl_type)
         try:
             self._make_dl_path(dl_path)
             self.logger.debug(f"Successfully obtained unique download path for video {link} "
@@ -147,11 +157,11 @@ class Downloader:
         except DownloadError as e:
             self.logger.error(f"Failed to download {link}: Caught DownloadError.")
             self.logger.debug(f"Error: {e}")
-            return (-1, "")
+            return (-1, result)
         except UnavailableVideoError as e:
             self.logger.error(f"Failed to download {link}: Video unavailable")
             self.logger.debug(f"Error: {e}")
-            return (-1, "")
+            return (-1, result)
         except Exception as e:
             self.logger.debug(f"Got unknown error: {e}.\nRe-raising exception")
             raise
@@ -159,7 +169,18 @@ class Downloader:
         # TODO: Look into source for ytdlp's error codes. 
         # ytdlp has YoutubeDL.download() return an integer error code, but
         # I'm unsure exactly what those codes are nor what they mean
-        return (rc, str(dl_path))
+
+        result.dl_path = str(dl_path)
+
+        # The dl_path is in the form of: some/relative/path/<uuid>
+        # So splitting it at the '/' means <uuid> is at the end
+        result.unique_path_uuid = str(dl_path).split("/")[-1]
+        result.video_id = video_info["id"]
+
+        format_info = self._get_fmt_info(video_info)
+        result.filename = result.video_id + "." + format_info["ext"]
+        
+        return (rc, result)
 
     def _extract_info(self, link: str, extra_opts: dict = {}) -> dict:
         with YoutubeDL(self.ytdlp_opts | extra_opts) as ydl:
@@ -173,7 +194,7 @@ class Downloader:
             err_code = ydl.download([link])
         return err_code
 
-    def _get_unique_dl_path(self, video_id: str, dl_type: str = "local") -> Path:
+    def _get_unique_dl_path(self, dl_type: str = "local") -> Path:
         if dl_type == "tmp":
             raise NotImplementedError("'tmp' storage type is not yet implemented")
         elif dl_type == "remote":
@@ -182,7 +203,6 @@ class Downloader:
             p = (
                     self.downloader_opts.get("local_dl_path")
                     / Path(str(uuid4()))
-                    / Path(video_id)
                 )
             return p
 
@@ -198,13 +218,17 @@ class Downloader:
             return False, reason
         return True, None
 
-    def _video_size_ok(self, video_info: dict) -> tuple[bool, DOWNLOAD_ERROR]:
+    def _get_fmt_info(self, video_info: dict) -> dict:
         selected_format_id = video_info["format_id"]
         format_info = next(
             fmt 
             for fmt in video_info["formats"]
             if fmt["format_id"] == selected_format_id
         )
+        return format_info
+
+    def _video_size_ok(self, video_info: dict) -> tuple[bool, DOWNLOAD_ERROR]:
+        format_info = self._get_fmt_info(video_info)
         filesize = format_info.get("filesize") or format_info.get("filesize_approx")
         if filesize is not None:
             if filesize > MAX_DOWNLOAD_FILESIZE_BYTES:
