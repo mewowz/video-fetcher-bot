@@ -19,18 +19,18 @@ def test_downloader_get_unique_dl_path(monkeypatch):
     video_id = "ABC12"
     expected_ret = ( 
             Path("data") / Path("videos") / 
-            Path(uuid4_out) / Path(video_id)
+            Path(uuid4_out)
     )
 
-    got = downloader._get_unique_dl_path(video_id, "local")
+    got = downloader._get_unique_dl_path("local")
 
     assert got == expected_ret
 
     with pytest.raises(NotImplementedError) as got_exception:
-        got = downloader._get_unique_dl_path(video_id, "remote")
+        got = downloader._get_unique_dl_path("remote")
 
     with pytest.raises(NotImplementedError) as got_exception:
-        got = downloader._get_unique_dl_path(video_id, "tmp")
+        got = downloader._get_unique_dl_path("tmp")
 
 
 @pytest.mark.unit

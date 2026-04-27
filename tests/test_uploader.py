@@ -4,16 +4,18 @@ import asyncio
 from unittest.mock import AsyncMock
 
 from worker.uploader import UploaderPool, UploadJobGetter, Uploader
-from utils.config import CONTENT_SERVER_BASE_URL
+from utils.config import CONTENT_SERVER_BASE_URL, CONTENT_SERVER_PORT, CONTENT_SERVER_BASE_PATH
 
 @pytest.mark.unit
 def test_uploader_get_payload():
-    example_path = "./some/relative/path.mp4"
+    example_path = "./uuid/path.mp4"
     expected = {
-        "content": CONTENT_SERVER_BASE_URL + "/some/relative/path.mp4"
+        "content": CONTENT_SERVER_BASE_URL + ':' +
+                    CONTENT_SERVER_PORT + '/' +
+                    CONTENT_SERVER_BASE_PATH + "/uuid/path.mp4"
     }
     uploader = Uploader(None, None, None)
-    got = uploader.get_payload({"download_path":example_path})
+    got = uploader.get_payload({"unique_path_uuid": "uuid", "filename": "path.mp4"})
     assert got == expected
 
 @pytest.mark.unit
