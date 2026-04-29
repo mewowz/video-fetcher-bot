@@ -23,3 +23,8 @@ CONTENT_SERVER_BASE_PATH = "videos"
 
 # 100MB in binary format - adjust accordingly
 MAX_DOWNLOAD_FILESIZE_BYTES = 100 * (1024**2) 
+
+FFMPEG_PATH = ""
+FFPROBE_PATH = ""
+CONVERT_MPEGTS_TO_MP4 = True
+CONVERT_WEBM_TO_MP4 = False 
