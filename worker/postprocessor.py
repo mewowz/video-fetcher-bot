@@ -49,19 +49,24 @@ class PostProcessor:
             "-show_format",
             str(video_path),
         ]
-        proc = await asyncio.create_subprocess_exec(
-            FFPROBE_PATH,
-            *ffprobe_args,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await proc.communicate()
 
-        if proc.returncode != 0:
+        ec, stdout, stderr = await self._run_ffprobe(ffprobe_args)
+
+        if ec != 0:
             self.logger.error(f"ffprobe failed with stderr: {stderr.decode()}")
             raise RuntimeError(f"ffprobe failed to execute for file {video_path}")
 
         return json.loads(stdout)
+
+    async def _run_ffprobe(self, args: list) -> tuple[int, bytes, bytes]:
+        proc = await asyncio.create_subprocess_exec(
+            FFPROBE_PATH,
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        return (proc.returncode, stdout, stderr)
 
     def _is_mp4(self, ffprobe_json: dict) -> bool:
         mp4_format_strings = ["mp4", "m4a", "mov"]
