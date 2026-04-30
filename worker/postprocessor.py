@@ -114,15 +114,11 @@ class PostProcessor:
         video_output_path = Path(str(video_path.with_suffix('')) + "_c" + ".mp4")
 
         success, ec = await self._mpegtsmp4_try_copy(video_path, video_output_path)
-        if ec != 0:
-            return (None, ec)
-        elif success is True:
+        if success is True:
             return (video_output_path, ec)
 
         success, ec = await self._mpegtsmp4_try_reencode_h264(video_path, video_output_path)
-        if ec != 0:
-            return (None, ec)
-        elif success is True:
+        if success is True:
             return (video_output_path, ec)
 
         return (None, ec)
