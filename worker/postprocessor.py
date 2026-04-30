@@ -7,7 +7,14 @@ import orjson as json
 from pathlib import Path
 from dataclasses import dataclass
 
-from utils.config import FFPROBE_PATH, FFMPEG_PATH, CONVERT_MPEGTS_TO_MP4, CONVERT_WEBM_TO_MP4
+from utils.config import (
+    FFPROBE_PATH,
+    FFMPEG_PATH,
+    CONVERT_MPEGTS_TO_MP4,
+    CONVERT_WEBM_TO_MP4,
+    THREADS_PER_POSTPROCESSOR_WORKER
+)
+
 if FFMPEG_PATH == "":
     ffmpeg_path = shutil.which("ffmpeg")
     if ffmpeg_path is None:
@@ -33,6 +40,7 @@ class PostProcessor:
         custom_logger: logging.Logger = None,
     ):
         self.name = name
+        self.thread_count = THREADS_PER_POSTPROCESSOR_WORKER
 
         if custom_logger != None and not isinstance(custom_logger, logging.Logger):
             raise ValueError(f"custom_logger must be of instance logging.Logger")
@@ -140,6 +148,7 @@ class PostProcessor:
     async def _mpegtsmp4_try_reencode_h264(self, video_path, output_path) -> tuple[bool, int]:
         ffmpeg_args = [
             "-y", "-i", str(video_path), 
+            "-threads", str(self.thread_count), 
             "-c:v", "libx264", "-crf", "20", "-preset", "medium",
             "-c:a", "aac",
             "-b:a", "128k",
