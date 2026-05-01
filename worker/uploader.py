@@ -16,7 +16,7 @@ from utils.config import (
     CONTENT_SERVER_BASE_URL,
     CONTENT_SERVER_PORT,
     CONTENT_SERVER_BASE_PATH,
-    DOWNLOADED_JOBS_QUEUE,
+    POSTPROCESS_JOBS_QUEUE,
     REDIS_CONN_ARGS,
 )
     
@@ -137,7 +137,7 @@ class UploadJobGetter:
         self.start_event.clear()
 
         while not self.stop_event.is_set():
-            result = await self.redis_aclient.brpop(DOWNLOADED_JOBS_QUEUE, timeout=self.redis_timeout)
+            result = await self.redis_aclient.brpop(POSTPROCESS_JOBS_QUEUE, timeout=self.redis_timeout)
             if result is None:
                 self.logger.debug(f"Got no job after {self.redis_timeout} seconds")
                 continue
