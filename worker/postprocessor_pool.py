@@ -224,7 +224,7 @@ class PostProcessorWorker:
             self.logger.debug(f"Job {job['job_id']} failed. Continuing...")
             return
         
-        job["filename"] = str(result.output_name)
+        job["filename"] = str(result.output_name.name)
         await self.redis_aclient.lpush(POSTPROCESS_JOBS_QUEUE, json.dumps(job))
         
 
