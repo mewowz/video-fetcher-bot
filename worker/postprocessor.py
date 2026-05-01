@@ -111,6 +111,16 @@ class PostProcessor:
         else:
             raise RuntimeError(f"Unrecognized format for {video_path}")
 
+        if converted_path is not None and ec == 0:
+            if DELETE_PREPROCESSED_VIDEO is True:
+                try:
+                    self._delete_video(video_path)
+                except Exception as e:
+                    self.logger.error(
+                        f"Could not delete preprocessed video @ {video_path} "
+                        f"with error: {e}"
+                    )
+
         result = PostProcessResult(converted_path, ec)
         
         self.logger.debug(f"Done processing video @ {video_path}")
@@ -174,3 +184,6 @@ class PostProcessor:
         )
         stdout, stderr = await proc.communicate()
         return (proc.returncode, stdout, stderr)
+
+    def _delete_video(self, video_path: Path):
+        video_path.unlink(missing_ok=True)
