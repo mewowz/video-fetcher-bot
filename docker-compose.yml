@@ -1,0 +1,8 @@
+services:
+  video-fetcher:
+    build: .
+    volumes: 
+      - ./data:/srv/video-fetcher/data
+      - ./logs:/srv/video-fetcher/logs
+    env_file:
+      - .env
