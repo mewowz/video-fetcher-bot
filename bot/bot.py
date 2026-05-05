@@ -6,6 +6,8 @@ from discord.ext import commands
 from bot.cogs import download_video as cog_download_video
 import redis.asyncio as redis
 
+from utils.config import REDIS_CONN_ARGS
+
 intents = discord.Intents.default()
 intents.guilds = True
 intents.message_content = True
@@ -23,7 +25,7 @@ bot = DLBot()
 
 async def init_bot():
     logger.debug("Setting up the redis client")
-    redis_aclient = redis.Redis()
+    redis_aclient = redis.Redis(**REDIS_CONN_ARGS)
     bot.redis = redis_aclient
     logger.debug("Initializing cogs")
     await init_cogs()
