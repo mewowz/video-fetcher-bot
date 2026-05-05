@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --system --gid 911 runner \
- && useradd --system --gid 911 runner --uid 911 --create-home runner
+ && useradd --system --gid 911 --uid 911 --create-home runner
 
 WORKDIR /srv/video-fetcher
 
