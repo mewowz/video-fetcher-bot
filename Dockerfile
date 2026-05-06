@@ -28,7 +28,10 @@ COPY --chown=runner:runner . /srv/video-fetcher
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked \
  && chown -R runner:runner /srv/video-fetcher/.venv
-
+ && mkdir /srv/video-fetcher/data \
+ && mkdir /srv/video-fetcher/logs \
+ && chown -R runner:runner /srv/video-fetcher/data \
+ && chown -R runner:runner /srv/video-fetcher/logs \
 
 ENV PATH="/srv/video-fetcher/.venv/bin:$PATH"
 
