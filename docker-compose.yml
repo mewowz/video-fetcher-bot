@@ -1,10 +1,18 @@
 services:
+  valkey:
+    image: valkey/valkey:latest
   video-fetcher:
     build: .
     volumes: 
-      - ./data:/srv/video-fetcher/data
-      - ./logs:/srv/video-fetcher/logs
+      - data:/srv/video-fetcher/data
+      - logs:/srv/video-fetcher/logs
     env_file:
       - .env
     extra_hosts:
       - host.docker.internal:host-gateway
+    depends_on:
+      - valkey
+
+volumes:
+  data:
+  logs:

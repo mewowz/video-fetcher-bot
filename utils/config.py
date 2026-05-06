@@ -12,7 +12,7 @@ YTDL_OUTPUT_DIR = "./data/videos"
 CPU_COUNT = os.cpu_count()
 
 REDIS_CONN_ARGS = {
-    "host": os.environ.get("REDIS_CONN_HOST", "localhost"),
+    "host": os.environ.get("REDIS_CONN_HOST", "valkey"),
     "port": int(os.environ.get("REDIS_PORT", 6379)),
 }
 
